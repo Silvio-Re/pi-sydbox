@@ -11,16 +11,16 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd -- "$script_dir/.." && pwd -P)"
-cd -- "$repo_root"   # every relative path below is repo-relative; nothing goes above this
+# every relative path below is repo-relative; nothing goes above this
 
-scratch=""
+# shellcheck disable=SC2317  # invoked indirectly: the EXIT trap set after the
+# mktemp below fires this; the analyzer does not follow trap-name references
 cleanup() {
   if [ -n "$scratch" ] && [ -d "$scratch" ]; then
     rm -rf -- "$scratch"
   fi
   return 0
 }
-trap cleanup EXIT
 
 usage() {
   cat <<'USAGE'
@@ -167,6 +167,7 @@ if [ -z "${engine_cmd:-}" ] && [ -z "${template:-}" ]; then
   template="$repo_root/corpus/profiles/syd-a.profile"
 fi
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/pi-sydbox-corpus.XXXXXX")"
+trap cleanup EXIT   # set only once the scratch root exists: no earlier exit can leak anything
 mkdir -p -- "$scratch/ok"
 printf 'secret\n' > "$scratch/secret"
 
@@ -200,8 +201,10 @@ if [ -n "$engine_cmd" ]; then
   # token is compared as a whole word and replaced by one path, so no other
   # character in the prefix is ever interpreted.
   for i in "${!engine_argv[@]}"; do
+    # shellcheck disable=SC2016  # the quoted forms below ARE the literal placeholder
+    # tokens the engine argv carries; matching them verbatim (not expanded) is the point
     case "${engine_argv[$i]}" in
-      '$PROFILE_FILE'|'${PROFILE_FILE}') engine_argv[$i]="$profile" ;;
+      '$PROFILE_FILE'|'${PROFILE_FILE}') engine_argv[i]="$profile" ;;
     esac
   done
   engine_bin="${engine_argv[0]}"
