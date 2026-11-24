@@ -13,8 +13,9 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd -- "$script_dir/.." && pwd -P)"
 # every relative path below is repo-relative; nothing goes above this
 
-# shellcheck disable=SC2317  # invoked indirectly: the EXIT trap set after the
+# shellcheck disable=SC2317,SC2329  # invoked indirectly: the EXIT trap set after the
 # mktemp below fires this; the analyzer does not follow trap-name references
+# (SC2317 = old numbering on ≤0.10.0, SC2329 = newer releases)
 cleanup() {
   if [ -n "$scratch" ] && [ -d "$scratch" ]; then
     rm -rf -- "$scratch"
