@@ -1,0 +1,13 @@
+{
+  "name": "pi-sydbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "syd (Landlock + seccomp) sandbox driver for pi: policy compiler, violation-to-grant mapper, approval dialogs",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.19.0" },
+  "pi": { "extensions": ["./src/index.ts"] },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  }
+}

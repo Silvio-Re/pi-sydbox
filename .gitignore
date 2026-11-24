@@ -1,0 +1,9 @@
+node_modules/
+results/
+agent_dir/
+corpus/out/
+AGENTS.md
+*.log
+*.tmp
+.opt/
+.DS_Store

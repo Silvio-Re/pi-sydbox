@@ -1,0 +1,6 @@
+This repository contains no syd source code. syd is a separate program
+(https://gitlab.exherbo.org/sydbox/sydbox), licensed GPL-3.0-only, invoked as a
+child process. Upstream maintainers: Ali Polatel, Morgane Glidic.
+
+syd binary releases are distributed from https://distfiles.exherbo.org/sydbox/
+and signed with key 0x25F201EDF60FF478 (contact: syd@chesswob.org).

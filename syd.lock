@@ -1,0 +1,53 @@
+{
+  "status": "verified",
+  "version": "3.60.0",
+  "url": "https://distfiles.exherbo.org/sydbox/syd-3.60.0-x86_64-pc-linux-gnu.tar.xz",
+  "sha512": "36ce5b03832166d7a0535fa8775f18c4225bcf6a03b5a2ded6fb79467789b6212d77d69a82a4951102be1a37ddfa1cb6148779a2d39111301343f817b4000641",
+  "signingKey": {
+    "scheme": "minisign",
+    "id": "b1e47bc29cc65132",
+    "fingerprint": "b1e47bc29cc65132",
+    "contact": "syd@chesswob.org",
+    "source": "https://gitlab.exherbo.org/sydbox/sydbox/-/raw/main/dev/syd-release.pub"
+  },
+  "installedPath": "/home/silvio/.local/opt/syd-3.60.0/syd",
+  "sourceBuild": {
+    "version": "3.59.0",
+    "tag": "v3.59.0",
+    "commit": "7e602aaff043121842754002f904694a5e2ed431",
+    "source": "https://gitlab.exherbo.org/sydbox/sydbox.git",
+    "features": ["force", "log", "systemd"],
+    "toolchain": { "rustc": "1.98.1", "cargo": "1.98.1" },
+    "libseccomp": {
+      "version": "2.6.0",
+      "source": "https://github.com/seccomp/libseccomp/releases/download/v2.6.0/libseccomp-2.6.0.tar.gz",
+      "sha256": "83b6085232d1588c379dc9b9cae47bb37407cf262e6e74993c61ba72d2a784dc",
+      "note": "apt 2.5.5 lacks seccomp_export_bpf_mem, which fails the link"
+    },
+    "buildTools": { "gperf": "3.1, built into the workdir because configure requires it" },
+    "scripts": [
+      "agent_dir/spike/build-libseccomp.sh",
+      "agent_dir/spike/build-engine.sh"
+    ],
+    "recordedAt": "2026-11-23",
+    "buildLog": "agent_dir/spike/logs/build-3.59.0.txt",
+    "installedPath": "/home/silvio/.local/opt/syd-3.59.0/syd",
+    "binary": {
+      "bytes": 68651448,
+      "banner": "syd 3.59.0 (Take It Back)",
+      "sha256": "db994415c0cc85710193ded9eae4b16a335ce2398abc50eab537b2d2970c780d",
+      "sha512": "3c18db264ab5348bf10142388d6541ea9ea2d914edc2f6e86ef2290083b94be49155efa5efe447b5988acb318e09813314203cb8ab9e2eb97b62756f1820c6b9"
+    }
+  },
+  "notes": [
+    "Verified 2026-06-04 against agent_dir/dist/syd-3.60.0-x86_64-pc-linux-gnu.tar.xz: sha512 matches, and the minisign signature by key b1e47bc29cc65132 (algorithm Ed, pure ed25519 over the file) is valid. agent_dir/spike/minisign_verify.py performs the check; the sig file carries no signed trusted comment. Trust anchor: the key was fetched over TLS from the upstream repository named in the signature comment.",
+    "The .sig is minisign, not OpenPGP: the PGP key 0x25F201EDF60FF478 at distfiles /sydbox/syd.asc is not the signer, and gpg --verify reports 'no valid OpenPGP data' however that key is imported.",
+    "Engine startup blocker: ChangeLog 3.60.0 states the new quiet/lock and log/lock rules need landlock ABI 10 (Linux>=7.2) and that Syd fails at startup on older kernels regardless of default/lock. This guest is 6.8.0-151-generic with landlock ABI 4, where every `syd -P profile -- cmd` exits EPERM with an empty log fd, including cat on an allowed path; `syd --check` still exits 0 because it only inspects the host.",
+    "A sha512 sidecar served by the same host proves transport only; GPG verification is required.",
+    "crates.io latest is 3.59.0, so `cargo install syd --version 3.60.0` is not a valid fallback.",
+    "distfiles.exherbo.org serves no index (NoSuchKey on /sydbox/ and /sydbox/index.html), so the artifact name is not discoverable by listing. The 3.60.0 x86-64 file is /sydbox/syd-3.60.0-x86_64-pc-linux-gnu.tar.xz, 48737872 bytes, sha512 recorded above; a detached .sig of 208 bytes sits next to it, there is no sha512sum sidecar, and /sydbox/syd.asc serves the key.",
+    "The tarball unpacks to syd-3.60.0-x86_64-pc-linux-gnu/bin/syd, a static-pie ELF; `syd --version` prints 'syd 3.60.0 (Biding My Time)'.",
+    "It cannot run inside the landstrip sandbox: `syd --check` reports 'Kernel may be tainted (error: EOPNOTSUPP: Operation not supported on transport endpoint)' and `syd -P profile -- /bin/true` hangs until killed (measured 2026-06-04). Engine runs are a plain-terminal step.",
+    "Source build 3.59.0 (2026-11-23) is the engine to use on this 6.8 kernel. It needs libseccomp >= 2.6.0 behind it: the apt 2.5.5 headers compile but the link fails on seccomp_export_bpf_mem, so libseccomp 2.6.0 is built from source as well (build-libseccomp.sh builds gperf into the workdir when absent). The binary links, installs and reports its version and feature set, but enforcement was not exercised from inside the landstrip session that produced it: a nested engine child writes /memfd:syd, the host sandbox denies that write, and cases end in rc=124 or rc=13. Run 03-smoke.sh in a plain terminal."
+  ]
+}
