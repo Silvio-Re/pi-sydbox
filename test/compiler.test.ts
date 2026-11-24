@@ -94,9 +94,13 @@ test("a stored grant lands before the denies, never after them", () => {
   assert.ok(grant < deny, `grant must precede the deny block:\n${profile}`);
 });
 
-test("a stored grant cannot smuggle a denial or a second line", () => {
+test("a stored grant cannot smuggle a denial; multi-line grants are checked line by line", () => {
   assert.throws(() => compileProfile({}, "A", ["deny/lpath,npath,rpath+/etc"]), PolicyError);
-  assert.throws(() => compileProfile({}, "A", ["allow/x+/a\nallow/y+/b"]), PolicyError);
+  assert.throws(() => compileProfile({}, "A", ["allow/x+/a\ndeny/y+/b"]), PolicyError);
+  assert.throws(() => compileProfile({}, "A", ["allow/x+/a\n"]), PolicyError, "no blank lines");
+  assert.throws(() => compileProfile({}, "A", ["allow/x+/a\n deny/y+/b"]), PolicyError, "no padded lines");
+  // Dual-spelling grants (mapper.ts) are legitimate: every line is an allow rule.
+  compileProfile({}, "A", ["allow/x+/a\nallow/y+/b"]);
 });
 
 test("toSydGlobs covers both object and subtree spellings", () => {

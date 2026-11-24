@@ -44,7 +44,7 @@ test("a dialog that throws denies instead of propagating", async () => {
   ui.notify = (m) => notes.push(m);
   assert.deepEqual(await choose(ui, "prompt"), { kind: "reject" });
   assert.equal(notes.length, 1);
-  assert.match(notes[0], /denying/);
+  assert.match(notes[0] ?? "", /denying/);
 });
 
 test("the timeout is the documented constant unless the caller overrides it", async () => {

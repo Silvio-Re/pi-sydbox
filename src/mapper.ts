@@ -30,12 +30,26 @@ const CAP_CATS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /** Actions that mean "the engine refused"; anything else needs no grant. */
-const DENIALS: ReadonlySet<string> = new Set(["deny", "abort", "kill", "stop", "panic", "filter"]);
+export const DENIALS: ReadonlySet<string> = new Set([
+  "deny",
+  "abort",
+  "kill",
+  "stop",
+  "panic",
+  "filter",
+]);
 
+/**
+ * The engine's recorded addr is already `host!port`; a `:` is only seen in a
+ * hand-written policy entry, so it converts there and passes captured addrs
+ * through verbatim (a blanket `:`→`!` rewrite would corrupt IPv6).
+ */
 function netRule(addr: string): string {
-  const at = addr.lastIndexOf(":");
-  if (at <= 0) return `allow/net/connect+${addr}`;
-  return `allow/net/connect+${addr.slice(0, at)}!${addr.slice(at + 1)}`;
+  if (/^[^:]+:[0-9]+$/.test(addr)) {
+    const at = addr.lastIndexOf(":");
+    return `allow/net/connect+${addr.slice(0, at)}!${addr.slice(at + 1)}`;
+  }
+  return `allow/net/connect+${addr}`;
 }
 
 /**
@@ -66,13 +80,17 @@ export function recordToGrant(record: AnyRecord, root: string): Grant | null {
   // Relative paths are logged against the process cwd; resolving against the
   // project root keeps the grant inside the tree the run belongs to.
   const absolute = normalizePath(path.startsWith("/") ? path : `${root.replace(/\/+$/, "")}/${path}`);
-  // The denial record names what was denied and its kind, so unlike a policy
-  // prefix there is no ambiguity here: a bare file path matches the file, a
-  // directory needs the subtree spelling or its children stay denied.
   const base = absolute.replace(/\/\*+$/, "");
-  // A record path that is itself a glob asks for the tree, and `type` names the
-  // kind for plain paths. A bare file path must stay bare: `<file>/***` matches
-  // nothing, which would turn every approval into a re-prompt loop.
-  const target = record.type === "dir" || base !== absolute ? `${base}/***` : base;
-  return { tier: "once", rule: `allow/${cats}+${target}` };
+  const ruleFor = (target: string) => `allow/${cats}+${target}`;
+  // A path needs both spellings; neither covers both kinds (environment.md,
+  // profile-files section). The record's `type` names the kind when present,
+  // and a record path that is itself a glob names the subtree. When the kind
+  // is unknown — the captured 3.59.0 fixture carries no `type`, so the field
+  // is not proven — BOTH spellings are emitted: the bare rule alone would
+  // leave a directory's children denied and re-prompt forever, while the
+  // extra subtree spelling is simply inert when the target is a file.
+  if (record.type === "reg") return { tier: "once", rule: ruleFor(base) };
+  const subtree = `${base}/***`;
+  if (record.type === "dir" || base !== absolute) return { tier: "once", rule: ruleFor(subtree) };
+  return { tier: "once", rule: `${ruleFor(base)}\n${ruleFor(subtree)}` };
 }

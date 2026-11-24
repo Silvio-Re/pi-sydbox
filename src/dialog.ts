@@ -9,8 +9,11 @@
  * how long an unanswered prompt stays on screen, so it is a documented constant
  * here rather than a hidden default, and callers may override it per launch.
  *
- * The prompt budget and the rerun guard are additions to landstrip's behaviour,
- * not parity, and must be labelled as such in the changelog.
+ * The prompt budget lives here as a constant the caller enforces per tool
+ * result: past the budget the remaining denials stay denied with a count
+ * notification, because a 30-denial batch must not hold the session hostage
+ * at AUTO_DENY_MS per prompt. Re-prompting a path the user already granted
+ * is the caller's dedupe, not this module's.
  */
 
 export interface DialogChoice {
@@ -23,6 +26,9 @@ export type Tier = (typeof TIERS)[number];
 
 /** PROVISIONAL until phase-0 step 5 is measured on pi-web. Override per call. */
 export const AUTO_DENY_MS = 120_000;
+
+/** Prompts asked per tool result; further denials stay denied with a notice. */
+export const PROMPT_BUDGET = 4;
 
 /** The labels a user picks between, in order. Reject is always last. */
 export const CHOICE_LABELS = [

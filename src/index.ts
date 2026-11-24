@@ -6,25 +6,41 @@
  * violation records are collected through SYD_LOG (a file path) rather than
  * SYD_LOG_FD, which would need the child's own descriptor table.
  *
- * Flow, and why it is shaped this way:
- *   tool_call   compile the profile, wrap the command, mutate event.input.command
- *   tool_result append the new SYD_LOG records; for each denial ask the dialog and
- *               store the grant, then tell the user to re-run: the engine already
- *               refused this call, and pi cannot replay a tool call from a result
- *               hook, so a grant takes effect on the next identical call.
+ * Flow:
+ *   tool_call   resolve the engine (env override, machine lock, then scan),
+ *               gate it once per session (self-check, lock hash), recompile
+ *               the profile from the CURRENT grants, wrap the command
+ *   tool_result offer a dialog per new denial within the budget, apply the
+ *               tier the user chose, rebuild the profile in place: the engine
+ *               already refused this call, and pi cannot replay a tool call
+ *               from a result hook — the grant lands on the next identical
+ *               call, and only if that call's profile contains it.
  *
- * Invariant 7: with no executable engine, bash calls are blocked rather than run
+ * Tier semantics (actually implemented, not stored-and-hoped):
+ *   once|session  process memory of this pi session, gone at exit
+ *   project       <stateRoot>/w-<slug>/grants.json (per project cwd)
+ *   global        <stateRoot>/global/grants.json
+ *
+ * The state root defaults to XDG_STATE_HOME (~/.local/state/pi-sydbox), outside
+ * every workspace a sandboxed command can write: the workload must not be able
+ * to append itself a grant or rewrite the profile it runs under. Standing deny
+ * rules for both config trees are compiled into every profile (appended last,
+ * so nothing overrides them), and the profile is rewritten before every spawn.
+ *
+ * Invariant 7: with no usable engine, bash calls are blocked rather than run
  * unsandboxed. Blocking is the only failure mode this module has.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { compileProfile, type NamespaceVariant, type SandboxPolicy } from "./compiler.ts";
-import { buildLaunch, LaunchError, placeProfile, fsAllowFor } from "./launcher.ts";
+import { compileProfile, toSydGlobs, WRITE_CATS, type NamespaceVariant, type SandboxPolicy } from "./compiler.ts";
+import { buildLaunch, buildSelfCheck, LaunchError, placeProfile, writeProfile, fsAllowFor } from "./launcher.ts";
 import { tryParseAccessLine, type AnyRecord } from "./records.ts";
-import { choose, type UiPort } from "./dialog.ts";
-import { recordToGrant } from "./mapper.ts";
+import { choose, PROMPT_BUDGET, type UiPort } from "./dialog.ts";
+import { recordToGrant, DENIALS } from "./mapper.ts";
 import { appendGrant, readGrants, rulesFor, type Tier } from "./store.ts";
 
 export interface PiApi {
@@ -36,10 +52,31 @@ export const LOG_NAME = "syd.log";
 export const PROFILE_DIR = "profiles";
 export const GRANTS_NAME = "grants.json";
 
-/** Highest installed engine under ~/.local/opt, or $SYD_PATH when set. */
+/** Where a machine pin lives: a copy of the repo's syd.lock (machine-setup step). */
+export function lockFile(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PI_SYDBOX_LOCK ?? join(homedir(), ".local", "opt", "syd.lock");
+}
+
+/** The engine named by the machine lock, when it names a usable one. */
+export function lockedEngine(env: NodeJS.ProcessEnv = process.env): string | null {
+  const file = lockFile(env);
+  let lock: { engine?: { path?: string }; sourceBuild?: { installedPath?: string } };
+  try {
+    lock = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return null; // no lock on this machine: the pin is advisory, see docs
+  }
+  const named = lock.engine?.path ?? lock.sourceBuild?.installedPath;
+  if (typeof named !== "string" || !isExecutable(named)) return null;
+  return named;
+}
+
+/** Pin order: env override, machine lock, then the version scan. */
 export function resolveEngine(env: NodeJS.ProcessEnv = process.env): string | null {
   const explicit = env.SYD_PATH;
   if (explicit !== undefined && explicit !== "" && isExecutable(explicit)) return explicit;
+  const locked = lockedEngine(env);
+  if (locked !== null) return locked;
 
   const opt = join(homedir(), ".local", "opt");
   let names: string[];
@@ -104,10 +141,12 @@ export function wrapCommand(command: string, options: WrapOptions): string {
 }
 
 /**
- * Records appended since `offset`. Returns the new offset so a later call does not
- * re-report the same denial. Unparseable lines advance the offset without
- * becoming records: the engine may write notices (level/msg) that are not
- * violations, and a parse bug must not re-prompt the user forever.
+ * Records appended since `offset`. Returns the new offset so a later call does
+ * not re-report the same denial. Every act in DENIALS counts — a kill or panic
+ * is strictly worse news than a deny and must not vanish. Unparseable lines
+ * advance the offset without becoming records: the engine may write notices
+ * (level/msg) that are not violations, and a parse bug must not re-prompt the
+ * user forever.
  */
 export function newDenials(logText: string, offset: number): { records: AnyRecord[]; offset: number } {
   const slice = logText.slice(offset);
@@ -118,13 +157,11 @@ export function newDenials(logText: string, offset: number): { records: AnyRecor
     try {
       record = tryParseAccessLine(line);
     } catch {
-      // tryParseAccessLine throws on a non-JSON line or schema drift by contract.
-      // Skipping keeps a corrupt line from re-prompting the user on every read.
       continue;
     }
-    if (record !== null) records.push(record);
+    if (record !== null && DENIALS.has(record.act)) records.push(record);
   }
-  return { records: records.filter((r) => r.act === "deny"), offset: logText.length };
+  return { records, offset: logText.length };
 }
 
 /** Prompt text: what was denied, and the exact rule the engine suggests. */
@@ -133,23 +170,74 @@ export function describeDenial(record: { cap: string; sys: string; path?: string
   return `syd denied ${record.cap} on ${target} (${record.sys}).\nGrant: ${rule}`;
 }
 
+/**
+ * Session log offset: the size the log already has when the session starts.
+ * Starting at 0 would re-prompt every historical denial left in a persistent
+ * syd.log — the prompt-storm failure the design called out.
+ */
+export function initialLogOffset(logPath: string): number {
+  try {
+    return statSync(logPath).size;
+  } catch {
+    return 0;
+  }
+}
+
+export interface StateLayout {
+  /** Root of all pi-sydbox state, outside every writable workspace. */
+  stateRoot: string;
+  /** Per-project directory under the root (slug of the project cwd). */
+  stateDir: string;
+  logPath: string;
+  projectGrants: string;
+  globalGrants: string;
+  /** Cache root used only when the state dir cannot host a private profile. */
+  cacheRoot: string;
+}
+
+export function stateLayout(cwd: string, env: NodeJS.ProcessEnv = process.env): StateLayout {
+  // PI_SYDBOX_DIR stays honored (test and dev override) as the state root.
+  const stateRoot =
+    env.PI_SYDBOX_STATE ??
+    (env.PI_SYDBOX_DIR !== undefined ? join(env.PI_SYDBOX_DIR, ".sydbox") : undefined) ??
+    join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "pi-sydbox");
+  const slug = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+  const stateDir = join(stateRoot, `w-${slug}`);
+  return {
+    stateRoot,
+    stateDir,
+    logPath: join(stateDir, LOG_NAME),
+    projectGrants: join(stateDir, GRANTS_NAME),
+    globalGrants: join(stateRoot, "global", GRANTS_NAME),
+    cacheRoot: env.PI_SYDBOX_CACHE ?? join(env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "pi-sydbox"),
+  };
+}
+
 interface SessionState {
-  profile: string;
+  layout: StateLayout;
+  policy: SandboxPolicy;
+  fsAllows: string[];
+  sessionGrants: Set<string>;
+  /** Profile directory that satisfied the trusted-path checks (may be cacheRoot). */
+  profileDir: string;
   profilePath: string;
   logPath: string;
   logOffset: number;
-  workDir: string;
+  /** Engine gate runs once per session state, not per call. */
+  engineGated: boolean;
 }
 
 /** Adapts pi's ctx.ui onto the dialog port; pi's select already resolves to a label. */
 function uiPort(ctx: unknown): UiPort {
   const ui = (ctx as { ui?: { select?: UiPort["select"]; notify?: (m: string) => void } }).ui;
   return {
+    // Presence, not arity: a bound or variadic select reports length 0 and must
+    // still be a UI. Absence means no terminal; prompts resolve to reject.
     select: (prompt, labels, opts) =>
-      ui?.select !== undefined && ui.select.length >= 2
-        ? ui.select(prompt, labels, opts as never)
-        : Promise.resolve(undefined),
-    notify: (message) => ui?.notify?.(message),
+      typeof ui?.select === "function" ? ui.select(prompt, labels, opts as never) : Promise.resolve(undefined),
+    notify: (message) => {
+      if (typeof ui?.notify === "function") ui.notify(message);
+    },
   };
 }
 
@@ -165,38 +253,115 @@ function shellRefusal(reason: string) {
 export default function activate(pi: PiApi): void {
   let state: SessionState | null = null;
 
+  /** Grants a compiled profile carries: stored project + global + session ones. */
+  const storedRules = (file: string, tier: Tier): string[] => {
+    try {
+      return rulesFor(readGrants(file), tier);
+    } catch {
+      // A corrupt store must not stop the sandbox from starting; denies still
+      // hold. The dialog layer reports the store when a grant is attempted.
+      return [];
+    }
+  };
+
+  const compileCurrent = (st: SessionState): string => {
+    const grants = [
+      ...storedRules(st.layout.projectGrants, "project"),
+      ...storedRules(st.layout.globalGrants, "global"),
+      ...st.sessionGrants,
+      ...st.fsAllows,
+    ];
+    // Standing self-protection denials, appended last so nothing overrides
+    // them: the sandboxed tree must not read, write, create or rename anything
+    // under the config roots. The engine itself writes there as the sandbox's
+    // parent, outside its own confinement.
+    const denies = [...toSydGlobs(st.layout.stateRoot), ...toSydGlobs(st.layout.cacheRoot)].map(
+      (glob) => `deny/${WRITE_CATS}+${glob}`,
+    );
+    return compileProfile(st.policy, "A" as NamespaceVariant, grants, denies);
+  };
+
+  const rebuildProfile = (st: SessionState): string => {
+    const text = compileCurrent(st);
+    writeProfile(st.profileDir, text); // same dir, same name: the stable path keeps its modes
+    return text;
+  };
+
   /**
-   * One profile per session: compiled once from the policy plus stored grants
-   * plus the filesystem allow-list for filesystems the engine does not know
-   * (fsAllowFor probes the allow targets' statfs magics — the engine denies
-   * every access on an unknown fs, path rules included), then reused. Every
-   * hook that runs a command must use the same file, or grants accumulate
-   * against a profile no command reads.
+   * A shell that could not read pre-0.2 grants (the old agent_dir/.sydbox
+   * store) would silently forget them on upgrade. Import once per project:
+   * every legacy tier lands in the project store — the legacy session grants
+   * were already effectively permanent, and a grant that disappears is worse
+   * than one that outlived its promise.
    */
+  const importLegacyGrants = (layout: StateLayout, cwd: string): void => {
+    const legacy = join(cwd, "agent_dir", ".sydbox", GRANTS_NAME);
+    if (!existsSync(legacy) || existsSync(layout.projectGrants)) return;
+    try {
+      for (const grant of readGrants(legacy)) appendGrant(layout.projectGrants, "project", grant.rule);
+    } catch {
+      // Unreadable legacy store: leave the file alone, import nothing.
+    }
+  };
+
   const ensureState = (ctx: unknown): SessionState => {
     if (state !== null) return state;
     const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd();
-    const workDir = join(process.env.PI_SYDBOX_DIR ?? join(cwd, "agent_dir"), ".sydbox");
+    const layout = stateLayout(cwd);
     const policy = loadPolicy(cwd);
-    const allowPaths = [
-      ...(policy.filesystem?.allowRead ?? []),
-      ...(policy.filesystem?.allowWrite ?? []),
-    ];
+    const allowPaths = [...(policy.filesystem?.allowRead ?? []), ...(policy.filesystem?.allowWrite ?? [])];
     const fsAllows = fsAllowFor(allowPaths);
-    const profile = compileProfile(policy, "A" as NamespaceVariant, [...safeGrants(workDir), ...fsAllows]);
-    // The work directory is preferred (profile next to log and grants), but it
-    // may sit on a filesystem that cannot hold a trusted profile — a host
-    // shared folder keeps 0770/0660 whatever chmod says — and then the engine
-    // refuses to start. placeProfile moves only the profile to guest disk.
-    const placed = placeProfile(join(workDir, PROFILE_DIR), cacheRoot(), profile);
+    importLegacyGrants(layout, cwd);
+    // The state dir sits on the host's own disk; the cache root only matters
+    // for a host whose state dir cannot hold a profile the engine trusts.
+    // A minimal valid profile text is placed first so the path and its modes
+    // are settled before the first real compile rewrites the same file.
+    const placed = placeProfile(
+      join(layout.stateDir, PROFILE_DIR),
+      join(layout.cacheRoot, "profile-fallback"),
+      "include_profile linux\nsandbox/lock:off\n",
+    );
     state = {
-      workDir,
-      profile,
+      layout,
+      policy,
+      fsAllows,
+      sessionGrants: new Set(),
+      profileDir: placed.dir,
       profilePath: placed.path,
-      logPath: join(workDir, LOG_NAME),
-      logOffset: 0,
+      logPath: layout.logPath,
+      logOffset: initialLogOffset(layout.logPath),
+      engineGated: false,
     };
+    rebuildProfile(state);
     return state;
+  };
+
+  /**
+   * Once per session: the engine must pass its own self-check, and when a
+   * machine lock names this exact engine, the binary must hash to what the
+   * lock recorded. A swapped binary under a known name is the classic way to
+   * inherit a validation one never earned.
+   */
+  const gateEngine = (st: SessionState, engine: string, env: NodeJS.ProcessEnv = process.env): string | null => {
+    if (st.engineGated) return null;
+    st.engineGated = true;
+    const argv = buildSelfCheck(engine);
+    const check = spawnSync(argv[0] ?? engine, argv.slice(1), { encoding: "utf8" });
+    if (check.status !== 0) return `engine self-check failed (rc=${check.status ?? "signal"})`;
+    const locked = lockedEngine(env);
+    let want: string | undefined;
+    try {
+      want = (JSON.parse(readFileSync(lockFile(env), "utf8")) as { sourceBuild?: { installedPath?: string; binary?: { sha256?: string } } })
+        .sourceBuild?.binary?.sha256;
+      const recorded = (JSON.parse(readFileSync(lockFile(env), "utf8")) as { sourceBuild?: { installedPath?: string } })
+        .sourceBuild?.installedPath;
+      if (locked === null || recorded !== engine || want === undefined) return null;
+    } catch {
+      return null; // lock unreadable here: the scan above already found something runnable
+    }
+    const got = createHash("sha256").update(readFileSync(engine)).digest("hex");
+    if (got !== want) return `engine binary hash mismatch: ${engine}`;
+    return null;
   };
 
   pi.on?.("tool_call", async (event, ctx) => {
@@ -209,20 +374,37 @@ export default function activate(pi: PiApi): void {
       return { block: true, reason: "pi-sydbox: no syd engine installed, refusing to run bash unsandboxed" };
     }
 
+    let current: SessionState;
     try {
-      const current = ensureState(ctx);
+      current = ensureState(ctx);
+      const bad = gateEngine(current, engine);
+      if (bad !== null) return { block: true, reason: `pi-sydbox: ${bad}` };
+      // Rewritten per spawn: a grant stored seconds ago is in the file this
+      // child reads, and no edit between two calls can outlive the rewrite.
+      const profile = rebuildProfile(current);
       input.command = wrapCommand(input.command, {
         sydPath: engine,
         profilePath: current.profilePath,
         logPath: current.logPath,
-        profile: current.profile,
+        profile,
       });
       return undefined;
     } catch (err) {
       // A compile or launch failure must not degrade into an unsandboxed run.
+      if (process.env.PI_SYDBOX_DEBUG === "1") console.error("pi-sydbox tool_call failure:", err);
       return { block: true, reason: `pi-sydbox: ${(err as Error).message}` };
     }
   });
+
+  const applyGrant = (st: SessionState, tier: Tier, rule: string): void => {
+    if (tier === "once" || tier === "session") {
+      st.sessionGrants.add(rule); // memory only: neither tier survives pi
+    } else if (tier === "project") {
+      appendGrant(st.layout.projectGrants, "project", rule);
+    } else {
+      appendGrant(st.layout.globalGrants, "global", rule);
+    }
+  };
 
   pi.on?.("tool_result", async (_event, ctx) => {
     if (state === null) return undefined;
@@ -235,22 +417,48 @@ export default function activate(pi: PiApi): void {
     const { records, offset } = newDenials(text, state.logOffset);
     state.logOffset = offset;
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd();
+    const ui = uiPort(ctx);
+
+    let prompted = 0;
+    let dropped = 0;
+    let grantedAny = false;
+    const seenRules = new Set<string>([...storedRules(state.layout.projectGrants, "project"), ...storedRules(state.layout.globalGrants, "global"), ...state.sessionGrants]);
 
     for (const record of records) {
-      const grant = recordToGrant(record, root);
+      let grant: ReturnType<typeof recordToGrant>;
+      try {
+        grant = recordToGrant(record, root);
+      } catch {
+        continue; // a mapper surprise must not eat the rest of the batch
+      }
       if (grant === null) continue;
-      const choice = await choose(uiPort(ctx), describeDenial(record, grant.rule));
-      if (choice.kind === "reject" || choice.tier === undefined) continue;
-      appendGrant(join(state.workDir, GRANTS_NAME), choice.tier as Tier, grant.rule);
-      uiPort(ctx).notify?.(`pi-sydbox: ${choice.tier} grant stored — re-run the command to use it`);
+      // Already granted (or repeated in this batch): no second prompt for the
+      // same rule. This is the rerun guard.
+      if (seenRules.has(grant.rule)) continue;
+      seenRules.add(grant.rule);
+      if (prompted >= PROMPT_BUDGET) {
+        dropped += 1;
+        continue;
+      }
+      prompted += 1;
+      try {
+        const choice = await choose(ui, describeDenial(record, grant.rule));
+        if (choice.kind === "grant" && choice.tier !== undefined) {
+          applyGrant(state, choice.tier as Tier, grant.rule);
+          grantedAny = true;
+          ui.notify?.(`pi-sydbox: ${choice.tier} grant applied`);
+        }
+      } catch (err) {
+        ui.notify?.(`pi-sydbox: grant failed, the denial stays: ${(err as Error).message}`);
+      }
     }
+    if (dropped > 0) {
+      ui.notify?.(`pi-sydbox: ${dropped} further denial(s) left denied (prompt budget reached; they will be offered again on the next run)`);
+    }
+    if (grantedAny) rebuildProfile(state);
     return undefined;
   });
 
-  // `!` and `!!` never reach tool_call, so without this hook the user's own
-  // shell runs unconfined. Named the `user_bash` hook, it either supplies
-  // wrapped operations or records a refusal — returning undefined from every
-  // handler is what would let the unsandboxed backend run the command.
   pi.on?.("user_bash", async (event, ctx) => {
     const command = (event as { command?: unknown }).command;
     if (typeof command !== "string") return undefined;
@@ -262,27 +470,42 @@ export default function activate(pi: PiApi): void {
 
     try {
       const current = ensureState(ctx);
-      // Imported lazily and by variable so the extension (and its tests) load
-      // without pi resolvable, and without TypeScript needing the package types.
+      const bad = gateEngine(current, engine);
+      if (bad !== null) return { result: shellRefusal(bad) };
       const specifier = "@earendil-works/pi-coding-agent";
       const mod = (await import(specifier)) as { createLocalBashOperations?: () => BashBackend };
       const local = mod.createLocalBashOperations?.();
       if (local === undefined) throw new Error("createLocalBashOperations is missing in this pi build");
       return {
         operations: {
-          // Wrap the command pi passes to exec, not the event's copy: they are the
-          // same today, and this stays right if pi ever rewrites the command.
-          exec: (command: string, cwd: string, options: unknown) =>
-            local.exec(
+          exec: (command: string, cwd: string, options: unknown) => {
+            const profile = rebuildProfile(current);
+            const result = local.exec(
               wrapCommand(command, {
                 sydPath: engine,
                 profilePath: current.profilePath,
                 logPath: current.logPath,
-                profile: current.profile,
+                profile,
               }),
               cwd,
               options,
-            ),
+            );
+            // A `!` command has no async result hook, so a dialog cannot be
+            // awaited here. Count the new denials without consuming them: the
+            // next tool result offers them. Silence would hide them entirely.
+            let pending = 0;
+            try {
+              pending = newDenials(readFileSync(current.logPath, "utf8"), current.logOffset).records.length;
+            } catch {
+              // no log yet: the command may have been a plain echo
+            }
+            if (pending > 0) {
+              uiPort(ctx).notify?.(
+                `pi-sydbox: ${pending} denial(s) from your \`!\` command — they will be offered for approval on the next tool result`,
+              );
+            }
+            return result;
+          },
         },
       };
     } catch (err) {
@@ -291,14 +514,6 @@ export default function activate(pi: PiApi): void {
   });
 
   void pi.registerTool;
-}
-
-/**
- * Guest-disk fallback for the profile only: the log and the grant store stay in
- * the work directory, the profile is the one file the engine inspects modes on.
- */
-function cacheRoot(): string {
-  return join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "pi-sydbox");
 }
 
 function loadPolicy(cwd: string): SandboxPolicy {
@@ -310,14 +525,4 @@ function loadPolicy(cwd: string): SandboxPolicy {
     }
   }
   return {};
-}
-
-function safeGrants(workDir: string): string[] {
-  try {
-    const grants = readGrants(join(workDir, GRANTS_NAME));
-    return [...rulesFor(grants, "session"), ...rulesFor(grants, "project"), ...rulesFor(grants, "global")];
-  } catch {
-    // A corrupt store must not stop the sandbox from starting; denies still hold.
-    return [];
-  }
 }

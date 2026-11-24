@@ -5,9 +5,21 @@
   "description": "syd (Landlock + seccomp) sandbox driver for pi: policy compiler, violation-to-grant mapper, approval dialogs",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=22.19.0" },
-  "pi": { "extensions": ["./src/index.ts"] },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
   "scripts": {
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "ci": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.0"
   }
 }

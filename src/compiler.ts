@@ -85,8 +85,8 @@ function netRule(entry: string): string {
 export function namespaceViolations(profile: string, variant: NamespaceVariant): string[] {
   const found: string[] = [];
   for (const m of profile.matchAll(UNSHARE)) {
-    const kinds = m[1].split(",").filter((k) => k.length > 0);
-    const rule = `unshare/${kinds.join(",")}:${m[2]}`;
+    const kinds = (m[1] ?? "").split(",").filter((k) => k.length > 0);
+    const rule = `unshare/${kinds.join(",")}:${m[2] ?? ""}`;
     if (variant === "A") found.push(rule);
     else if (kinds.includes("user")) found.push(rule);
   }
@@ -107,6 +107,8 @@ export function compileProfile(
   policy: SandboxPolicy,
   _variant: NamespaceVariant,
   extraAllows: readonly string[] = [],
+  /** Standing denies appended last, so nothing can override them. */
+  extraDenies: readonly string[] = [],
 ): string {
   // A disabled sandbox is not an empty profile: an empty one still means the
   // engine's built-in default. `include_profile off` is how the engine spells
@@ -134,10 +136,13 @@ export function compileProfile(
 
   // Stored grants (store.ts) arrive as ready-made rules. They go here, before the
   // denies: a rule added after a deny would silently override an explicit denial.
+  // A grant may carry several lines (mapper.ts emits both a bare and a `/***`
+  // spelling when the denied path's kind is unknown), so every line is checked.
   for (const extra of extraAllows) {
-    if (!extra.startsWith("allow/")) throw new PolicyError(`stored grant must be an allow rule: ${extra}`);
-    if (extra.includes("\n")) throw new PolicyError("stored grant must be a single line");
-    lines.push(extra);
+    const lines2 = extra.split("\n");
+    if (lines2.some((l) => !l.startsWith("allow/"))) throw new PolicyError(`stored grant must be allow rules: ${extra}`);
+    if (lines2.some((l) => l.trim() !== l || l.length === 0)) throw new PolicyError(`stored grant must have no blank or padded lines: ${extra}`);
+    lines.push(...lines2);
   }
 
   // Denials last. landstrip's `*Always` variants differ from the promptable ones
@@ -147,6 +152,12 @@ export function compileProfile(
   pushRules(lines, "deny", READ_CATS, fs.denyRead);
   pushRules(lines, "deny", WRITE_CATS, fs.denyWriteAlways);
   pushRules(lines, "deny", WRITE_CATS, fs.denyWrite);
+
+  for (const extra of extraDenies) {
+    if (!extra.startsWith("deny/")) throw new PolicyError(`standing deny must be a deny rule: ${extra}`);
+    if (extra.includes("\n")) throw new PolicyError("standing deny must be a single line");
+    lines.push(extra);
+  }
 
   return `${lines.join("\n")}\n`;
 }

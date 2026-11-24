@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import activate, { newDenials, resolveEngine, shellQuote, wrapCommand } from "../src/index.ts";
+import { dirname, join } from "node:path";
+import activate, { initialLogOffset, newDenials, resolveEngine, shellQuote, wrapCommand, stateLayout } from "../src/index.ts";
+import { PROMPT_BUDGET } from "../src/dialog.ts";
 
 const FIXTURE = new URL("./fixtures/syd-3.59.0-access-deny.jsonl", import.meta.url).pathname;
 const fixture = readFileSync(FIXTURE, "utf8").trimEnd();
@@ -39,7 +40,7 @@ test("a profile that breaks the namespace invariant is refused at wrap time", ()
 test("only lines after the offset are reported, and only denials", () => {
   const first = newDenials(`${fixture}\n`, 0);
   assert.equal(first.records.length, 1);
-  assert.equal(first.records[0].cap, "exec");
+  assert.equal(first.records[0]?.cap, "exec");
   assert.equal(first.offset, fixture.length + 1);
 
   const second = newDenials(`${fixture}\n`, first.offset);
@@ -52,6 +53,37 @@ test("a notice or a corrupt line advances the offset without becoming a record",
   const { records, offset } = newDenials(log, 0);
   assert.deepEqual(records, []);
   assert.equal(offset, log.length);
+});
+
+test("kill, panic, abort and filter are denials too — worse news must not vanish", () => {
+  const line = (act: string) =>
+    JSON.stringify({ ctx: "pid:42", cap: "read", act, sys: "openat", path: "/x" });
+  for (const act of ["kill", "panic", "abort", "filter"]) {
+    assert.equal(newDenials(`${line(act)}\n`, 0).records.length, 1, `${act} must be a denial`);
+  }
+  assert.equal(newDenials(`${line("allow")}\n${line("warn")}\n${line("exit")}\n`, 0).records.length, 0);
+});
+
+test("initialLogOffset is the existing log size, so history is not re-prompted", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sydbox-off-"));
+  const missing = join(dir, "syd.log");
+  assert.equal(initialLogOffset(missing), 0, "no log yet: nothing to skip");
+  writeFileSync(missing, "old line\n");
+  assert.equal(initialLogOffset(missing), "old line\n".length, "a prior session's records stay silent");
+});
+
+test("stateLayout is per-project and outside the workspace by default", () => {
+  const env = { HOME: "/home/u", XDG_STATE_HOME: "/home/u/.local/state" };
+  const layout = stateLayout("/work/project", env);
+  assert.equal(layout.stateRoot, "/home/u/.local/state/pi-sydbox");
+  assert.ok(layout.stateDir.startsWith("/home/u/.local/state/pi-sydbox/w-"), layout.stateDir);
+  assert.equal(layout.logPath, join(layout.stateDir, "syd.log"));
+  assert.equal(layout.projectGrants, join(layout.stateDir, "grants.json"));
+  assert.equal(layout.globalGrants, "/home/u/.local/state/pi-sydbox/global/grants.json");
+  const overridden = stateLayout("/work/project", { ...env, PI_SYDBOX_DIR: "/test/dir" });
+  assert.equal(overridden.stateRoot, "/test/dir/.sydbox", "PI_SYDBOX_DIR keeps overriding for tests");
+  // Two distinct projects never share a state directory.
+  assert.notEqual(stateLayout("/work/other", env).stateDir, layout.stateDir);
 });
 
 test("an explicit engine path is used only when it is executable", () => {
@@ -135,14 +167,78 @@ test("tools other than bash and non-string commands pass through untouched", asy
   });
 });
 
+/** A ctx.ui double: answers every prompt with a canned label, records calls. */
+class UiProbe {
+  public readonly selectCalls: string[] = [];
+  public readonly notes: string[] = [];
+  private readonly answer: string;
+  constructor(answer: string) {
+    this.answer = answer;
+  }
+  public readonly select = async (_prompt: string): Promise<string | undefined> => {
+    this.selectCalls.push(this.answer);
+    return this.answer;
+  };
+  public readonly notify = (message: string): void => {
+    this.notes.push(message);
+  };
+}
+
+test("a session grant is compiled into the profile the next call uses", async () => {
+  // THE review bug (grants stored but never compiled): answering a prompt
+  // must rewrite the very file the next spawn reads, in place.
+  await wiring(async (dir, handlers) => {
+    const ui = new UiProbe("Allow for this session");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    const input = { command: "echo hi" };
+    await handlers.get("tool_call")?.({ toolName: "bash", input }, ctx);
+    const profilePath = /'([^']+\.syd-3)'/.exec(String(input.command))?.[1];
+    assert.ok(profilePath, "sanity: wrapped with a profile path");
+
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    const line = JSON.stringify({ ctx: "pid:1", cap: "read", act: "deny", sys: "openat", path: "/work/data.txt" });
+    writeFileSync(layout.logPath, `${line}\n`);
+
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.equal(ui.selectCalls.length, 1, "one prompt, one denial");
+    assert.match(ui.notes.join("|"), /session grant applied/);
+
+    // Session grants are memory, not a write to the project store.
+    assert.equal(existsSync(layout.projectGrants), false, "session tier does not touch disk");
+    const rebuilt = readFileSync(profilePath!, "utf8");
+    assert.match(rebuilt, /allow\/[a-z,]+\+\/work\/data\.txt/, "the grant must be in the file the engine reads next");
+  });
+});
+
+test("the prompt budget stops the batch and reports what was left denied", async () => {
+  await wiring(async (dir, handlers) => {
+    const ui = new UiProbe("Deny");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+    await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+
+    const layout = stateLayout(dir);
+    mkdirSync(layout.stateDir, { recursive: true });
+    const lines = Array.from({ length: PROMPT_BUDGET + 3 }, (_, i) =>
+      JSON.stringify({ ctx: "pid:1", cap: "read", act: "deny", sys: "openat", path: `/work/f${i}.txt` }),
+    );
+    writeFileSync(layout.logPath, `${lines.join("\n")}\n`);
+
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.equal(ui.selectCalls.length, PROMPT_BUDGET, "the budget caps the prompts");
+    assert.match(ui.notes.join("|"), /3 further denial/, "the overflow is reported, not silently dropped");
+  });
+});
+
 test("user_bash is gated: it wraps or refuses, never falls through", async () => {
   // Returning undefined from every user_bash handler is what makes pi run the
   // command through its own unsandboxed backend, so the assertion is precisely
   // "not undefined".
   await wiring(async (dir, handlers) => {
     const handler = handlers.get("user_bash");
-    assert.ok(handler, "no user_bash handler registered");
-    const verdict = await handler({ command: "echo hi" }, { cwd: dir });
+    const ui = new UiProbe("Deny");
+    const verdict = await handler?.({ command: "echo hi" }, { cwd: dir, ui: { select: ui.select, notify: ui.notify } });
     assert.notEqual(verdict, undefined, "undefined here means an unsandboxed shell");
     const shaped = verdict as { operations?: { exec?: unknown }; result?: { exitCode?: number } };
     if (shaped.operations !== undefined) {

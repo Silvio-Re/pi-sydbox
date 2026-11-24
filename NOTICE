@@ -3,4 +3,8 @@ This repository contains no syd source code. syd is a separate program
 child process. Upstream maintainers: Ali Polatel, Morgane Glidic.
 
 syd binary releases are distributed from https://distfiles.exherbo.org/sydbox/
-and signed with key 0x25F201EDF60FF478 (contact: syd@chesswob.org).
+and signed by the minisign key b1e47bc29cc65132 (contact: syd@chesswob.org),
+whose serialized public key is served by the upstream repository at
+https://gitlab.exherbo.org/sydbox/sydbox/-/raw/main/dev/syd-release.pub.
+Verification is minisign, not OpenPGP: the 0x25F201EDF60FF478 key served at
+https://distfiles.exherbo.org/sydbox/syd.asc is not the signer (syd.lock notes).

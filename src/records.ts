@@ -63,6 +63,7 @@ export const KNOWN_FIELDS = [
   "err",
   "msg",
   "tip",
+  "type",
   "hid",
   "syd",
   "tty",
@@ -109,6 +110,8 @@ export interface SydRecord {
   tip?: string;
   ipv?: 4 | 6;
   abs?: boolean;
+  /** Object kind ("reg"/"dir") on path records that carry it (doc-derived). */
+  type?: string;
   /** Keys outside KNOWN_FIELDS, kept in lenient mode. Never an empty object. */
   unknown?: Record<string, unknown>;
 }

@@ -11,6 +11,11 @@
     "source": "https://gitlab.exherbo.org/sydbox/sydbox/-/raw/main/dev/syd-release.pub"
   },
   "installedPath": "/home/silvio/.local/opt/syd-3.60.0/syd",
+  "engine": {
+    "path": "/home/silvio/.local/opt/syd-3.59.0/syd",
+    "version": "3.59.0",
+    "why": "the engine to use on this 6.8 kernel (landlock ABI 4): sourceBuild below, not the 3.60.0 release artifact"
+  },
   "sourceBuild": {
     "version": "3.59.0",
     "tag": "v3.59.0",

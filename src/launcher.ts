@@ -186,7 +186,9 @@ function fsMagicOf(path: string): bigint | null {
   let current = path;
   for (;;) {
     try {
-      return statfsSync(current).type;
+      // statfsSync().type is a number in Node; the engine's magic values are
+      // uint32, so the widening is exact.
+      return BigInt(statfsSync(current).type);
     } catch {
       const parent = dirname(current);
       if (parent === current) return null;

@@ -7,6 +7,8 @@ import { buildLaunch, buildSelfCheck, placeProfile, writeProfile, fsAllowFor, La
 import { PolicyError, compileProfile } from "../src/compiler.ts";
 
 const profilePath = "/home/u/.cache/sydbox/sydbox.profile";
+// Two tests below rely on chmod 0500 blocking writes, which root ignores.
+const asRoot = (process.getuid?.() ?? 0) === 0;
 const ok = {
   sydPath: "/home/u/.local/opt/syd-3.60.0/syd",
   profile: "lock:on\ndeny/read+/tmp/x",
@@ -120,7 +122,10 @@ test("placeProfile keeps the profile in the work directory when that works", () 
   assert.equal(statSync(placed.path).mode & 0o777, 0o600);
 });
 
-test("placeProfile relocates when the work directory cannot hold a private profile", () => {
+test(
+  "placeProfile relocates when the work directory cannot hold a private profile",
+  { skip: asRoot && "chmod 0500 does not block root" },
+  () => {
   // A shared-folder mount keeps 0770 after chmod; a read-only parent has the
   // same effect on any filesystem: no private directory can be created there.
   const root = mkdtempSync(join(tmpdir(), "sydbox-ro-"));
@@ -141,7 +146,10 @@ test("placeProfile relocates when the work directory cannot hold a private profi
   }
 });
 
-test("placeProfile fails closed when no candidate directory can be private", () => {
+test(
+  "placeProfile fails closed when no candidate directory can be private",
+  { skip: asRoot && "chmod 0500 does not block root" },
+  () => {
   const root = mkdtempSync(join(tmpdir(), "sydbox-ro-"));
   const locked = join(root, "locked");
   mkdirSync(locked);

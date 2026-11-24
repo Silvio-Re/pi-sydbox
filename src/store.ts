@@ -26,12 +26,20 @@ export interface StoredGrant {
 
 export class GrantStoreError extends Error {}
 
+/** Tiers that live in the process memory of the session that granted them. */
+export const MEMORY_TIERS: ReadonlySet<Tier> = new Set(["once", "session"]);
+
 /**
- * Appends one grant. Re-appending the same (tier, rule) is a no-op rather than a
- * duplicate: a violation can be retried many times in one session.
+ * Appends one persisted grant (project or global). Re-appending the same
+ * (tier, rule) is a no-op rather than a duplicate: a violation can be retried
+ * many times in one session. `once` and `session` are refused here: they live
+ * in memory for the session that chose them and must not survive it.
  */
 export function appendGrant(file: string, tier: Tier, rule: string): void {
   if (!TIERS.includes(tier)) throw new GrantStoreError(`unknown tier: ${tier}`);
+  if (MEMORY_TIERS.has(tier)) {
+    throw new GrantStoreError(`tier ${tier} is memory-only and must not be persisted`);
+  }
   if (typeof rule !== "string" || rule.trim() === "") throw new GrantStoreError("empty rule");
   if (rule.includes("\n")) throw new GrantStoreError("rule must be a single line");
 
