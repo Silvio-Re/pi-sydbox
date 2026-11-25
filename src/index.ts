@@ -151,7 +151,22 @@ export interface WrapOptions {
  * bash tool's own `bash -c <command>` semantics inside the sandbox.
  */
 export function wrapCommand(command: string, options: WrapOptions): string {
-  const plan = buildLaunch(["/bin/bash", "-c", command], {
+  // S1 seal, corrected after the fd-forge probe: the fd CANNOT be marked
+  // close-on-exec in the wrap shell — syd is exec'd by that same shell, so
+  // CLOEXEC there blinds the engine's own record channel (verdict run
+  // 20261125-105950: "engine records no longer reach the sink"). The fd must
+  // cross the engine's execve and be closed one level down, in the workload
+  // shell itself: the wrap owns the first statement the child runs, so the
+  // command is prefixed with `exec 3>&-` — after it, fd 3 is EBADF for the
+  // workload and everything it spawns, while the engine (the parent, which
+  // never execs again) keeps writing. The reopen paths stay blocked: the
+  // log path carries standing allows-turned-denies in the compiled profile
+  // (denies win regardless of the fd used to get there — syd checks the
+  // canonical path, so /proc/self/fd/3 resolves to the denied log path too).
+  // A prefix, not a wrapper: `exec 3>&-; <command>` leaves shell syntax
+  // (heredocs, comments, pipelines) exactly as the author wrote it.
+  const sealed = `exec 3>&-; ${command}`;
+  const plan = buildLaunch(["/bin/bash", "-c", sealed], {
     sydPath: options.sydPath,
     profile: options.profile,
     profilePath: options.profilePath,
@@ -160,17 +175,7 @@ export function wrapCommand(command: string, options: WrapOptions): string {
   // Fail-safe trace of the fd decision: the wrap shell opens the log fd in
   // append mode; SYD_LOG is documented in-engine as a level variable, and
   // the record sink is the fd named by SYD_LOG_FD (probes 21/22).
-  //
-  // S1 (external review, confirmed in syd 3.59.0 source): the engine keeps
-  // the fd raw (no FD_CLOEXEC in log_init, and trace/force_cloexec only marks
-  // fds the child itself creates), so without the helper the sandboxed
-  // workload would inherit fd 3 open-for-append and write(2) on a numeric fd
-  // is unmediated — a forged-record channel into the approval dialogs. The
-  // helper marks fd 3 close-on-exec in the wrap shell: CLOEXEC fires at the
-  // CHILD's execve, the engine parent never execs and keeps writing records.
-  // The log path itself stays denied in the compiled profile, closing the
-  // reopen channel. Helper failure is fail-closed: 126, workload not run.
-  return `exec 3>>${shellQuote(options.logPath)}; python3 -c ${shellQuote("import os; os.set_inheritable(3, False)")} || exit 126; SYD_LOG_FD=3 ${plan.command.map(shellQuote).join(" ")}`;
+  return `exec 3>>${shellQuote(options.logPath)}; SYD_LOG_FD=3 ${plan.command.map(shellQuote).join(" ")}`;
 }
 
 /**

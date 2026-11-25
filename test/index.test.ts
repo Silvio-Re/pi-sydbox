@@ -22,27 +22,30 @@ test("the wrapped command keeps the tool's bash -c semantics and logs to a file"
     logPath: "/work/syd.log",
     profile: "include_profile linux\nsandbox/lock:off\n",
   });
-  assert.match(wrapped, /^exec 3>>'\/work\/syd\.log'; python3 -c 'import os; os\.set_inheritable\(3, False\)' \|\| exit 126; SYD_LOG_FD=3 /);
-  assert.match(wrapped, /'\/opt\/syd' '-P' '\/work\/profiles\/sydbox\.syd-3' '--' '\/bin\/bash' '-c' 'rm -rf \.\/build'$/);
+  assert.match(wrapped, /^exec 3>>'\/work\/syd\.log'; SYD_LOG_FD=3 /);
+  assert.match(wrapped, /'\/bin\/bash' '-c' 'exec 3>&-; rm -rf \.\/build'$/);
 });
 
-test("the record fd is close-on-exec and helper failure is fail-closed", () => {
+test("the record fd crosses the engine's execve and is closed inside the workload", () => {
   const w = wrapCommand("true", {
     sydPath: "/opt/syd",
     profilePath: "/work/p.syd-3",
     logPath: "/work/syd.log",
     profile: "include_profile linux\nsandbox/lock:off\n",
   });
-  // S1 (external review): without CLOEXEC the workload inherits fd 3 and
-  // write(2) on numeric fds is unmediated — a forge channel into the grant
-  // dialogs. The helper must sit between open and launch; its failure must
-  // refuse the run (126) rather than sinkless / forgeable execution.
-  assert.ok(w.includes("os.set_inheritable(3, False)"), "marks fd 3 close-on-exec");
-  assert.ok(w.includes("|| exit 126;"), "helper failure refuses the run");
-  const open = w.indexOf("/work/syd.log");
-  const helper = w.indexOf("set_inheritable");
-  const engine = w.indexOf("'/opt/syd'");
-  assert.ok(open !== -1 && helper !== -1 && engine !== -1 && open < helper && helper < engine, "open, mark CLOEXEC, then launch");
+  // S1 corrected (fd-forge verdict 20261125-105950): CLOEXEC in the wrap
+  // shell blinds the engine too (syd is exec'd by that same shell), so the
+  // seal moves one level down — the workload's own first statement closes
+  // fd 3. The engine (parent, never execs again) keeps the channel; the
+  // workload and its descendants see EBADF, and the standing denies on the
+  // log path (canonical-path checked, so /proc/self/fd/3 too) block reopening.
+  assert.ok(!w.includes("set_inheritable"), "no CLOEXEC helper: the engine's channel must survive the exec");
+  const workload = w.indexOf("exec 3>&-;");
+  assert.ok(workload !== -1, "the workload runs the fd closer as its first statement");
+  // The closer must live INSIDE the workload argv, after the engine's -- and
+  // /bin/bash -c, not in the wrap shell that owns the real fd 3.
+  const engineArg = w.indexOf("'/bin/bash' '-c'");
+  assert.ok(engineArg !== -1 && engineArg < workload, "the closer is inside the child's command, after the bash argv");
 });
 
 test("a profile that breaks the namespace invariant is refused at wrap time", () => {

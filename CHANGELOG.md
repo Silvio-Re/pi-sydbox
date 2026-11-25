@@ -3,10 +3,19 @@
 ## [Unreleased]
 
 - S1 (external review): the record channel is no longer forgeable by the
-  contained workload. `wrapCommand` opens the log with `exec 3>>log`, marks
-  it close-on-exec, and passes `SYD_LOG_FD=3`; the child inherits no fd it
-  can write records through (`fdappend` verdict step probes every shape).
-  A denial record can now only come from the engine.
+  contained workload. The wrap shell opens the log append-only
+  (`exec 3>>log`, `SYD_LOG_FD=3`) and the fd must stay inheritable across
+  the engine's own execve — syd is launched by the same shell — so the
+  seal happens one level down: the wrap owns the workload's first
+  statement (`exec 3>&-`) and fd 3 is closed before any workload code
+  runs; the engine (the parent, which never execs again) keeps writing
+  records. Standing denies on the log path block every reopen including
+  `/proc/self/fd/3` (syd checks the canonical path). The fd-forge verdict
+  step pins all three cells: sealed child sees no fd 3, no forged record
+  reaches the sink, engine records still flow — plus a control cell
+  proving the visibility check is not vacuous. A first attempt that set
+  FD_CLOEXEC in the wrap shell was rejected by that same probe: it
+  blinded the engine's channel too (verdict 20261125-105950).
 - S2: the legacy grant import from `<workdir>/agent_dir/.sydbox/grants.json`
   (pre-0.2 migration) no longer runs implicitly — a fresh clone of a repo
   that happens to ship that path could preload itself with permanent grants
