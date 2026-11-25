@@ -58,6 +58,9 @@ export const GRANTS_NAME = "grants.json";
 /** The per-project approved policy, under the state dir — never inside the tree. */
 export const POLICY_NAME = "policy.json";
 
+/** Ceiling on the engine self-check in `gateEngine` (P0: see there). */
+const GATE_TIMEOUT_MS = 10_000;
+
 /** Where a machine pin lives: a copy of the repo's syd.lock (machine-setup step). */
 export function lockFile(env: NodeJS.ProcessEnv = process.env): string {
   return env.PI_SYDBOX_LOCK ?? join(homedir(), ".local", "opt", "syd.lock");
@@ -216,10 +219,29 @@ export function newDenials(logText: string, offset: number): { records: AnyRecor
   return { records, offset: end + 1, skipped };
 }
 
+/**
+ * Everything interpolated below came off the engine log, and the log's path and
+ * addr values are chosen by the contained process: a crafted filename must not
+ * be able to forge notification lines or bait a tier choice (P0, prompt
+ * injection). The defense is shape, not filtering: one constant framing line
+ * first, then every record-derived value JSON-quoted (so no newline, quote or
+ * label-like text inside it can ever read as a line of its own) and truncated
+ * before quoting (so a crafted name cannot flood the prompt either).
+ */
+export const RECORD_FRAMING = "The record below comes from the sandbox engine; its content is chosen by the contained process." as const;
+
+/** Display cap for record-derived values; generous for real paths, fatal to floods. */
+const MAX_UNTRUSTED_DISPLAY = 200;
+
+function showUntrusted(value: string): string {
+  const body = value.length > MAX_UNTRUSTED_DISPLAY ? `${value.slice(0, MAX_UNTRUSTED_DISPLAY)}…` : value;
+  return JSON.stringify(body);
+}
+
 /** Prompt text: what was denied, and the exact rule the engine suggests. */
 export function describeDenial(record: { cap: string; sys: string; path?: string; addr?: string }, rule: string): string {
   const target = record.path ?? record.addr ?? "(unknown target)";
-  return `syd denied ${record.cap} on ${target} (${record.sys}).\nGrant: ${rule}`;
+  return `${RECORD_FRAMING}\nsyd denied ${showUntrusted(record.cap)} on ${showUntrusted(target)} (${showUntrusted(record.sys)}).\nGrant: ${rule}`;
 }
 
 /**
@@ -452,7 +474,20 @@ export default function activate(pi: PiApi): void {
     if (st.engineGated) return null;
     st.engineGated = true;
     const argv = buildSelfCheck(engine);
-    const check = spawnSync(argv[0] ?? engine, argv.slice(1), { encoding: "utf8" });
+    // The self-check is a spawn like any other and can hang (P0: this call had
+    // no timeout, so a wedged engine --check blocked the first bash call
+    // forever). The limit is a fixed 10 s; PI_SYDBOX_GATE_TIMEOUT_MS is a
+    // test-only knob for keeping the suite fast. Either way a failure to run
+    // is a FAILED check — blocked, named — never a pass.
+    const envLimit = env.PI_SYDBOX_GATE_TIMEOUT_MS;
+    const limit = typeof envLimit === "string" && Number.isFinite(Number(envLimit)) && Number(envLimit) > 0 ? Number(envLimit) : GATE_TIMEOUT_MS;
+    const check = spawnSync(argv[0] ?? engine, argv.slice(1), { encoding: "utf8", timeout: limit });
+    if (check.error) {
+      const timedOut = /ETIMEDOUT/.test((check.error as Error).message);
+      return timedOut
+        ? `engine self-check timed out after ${limit} ms, refusing to judge it healthy (blocked)`
+        : `engine self-check failed to run (${(check.error as Error).message})`;
+    }
     if (check.status !== 0) return `engine self-check failed (rc=${check.status ?? "signal"})`;
     let lock: {
       engine?: { path?: string; binary?: { sha256?: string } };
@@ -530,10 +565,13 @@ export default function activate(pi: PiApi): void {
       st.onceGrants.add(rule); // one spawn wide, then gone
     } else if (tier === "session") {
       st.sessionGrants.add(rule); // memory only: neither tier survives pi
-    } else if (tier === "project") {
-      appendGrant(st.layout.projectGrants, "project", rule);
     } else {
-      appendGrant(st.layout.globalGrants, "global", rule);
+      // The mapper's dual-spelling grant arrives as one string with two lines
+      // (bare rule + subtree rule); the store is single-line by design, so
+      // each spelling is stored as its own grant. The line check in
+      // compileProfile stays the guard for once/session (memory) rules.
+      const file = tier === "project" ? st.layout.projectGrants : st.layout.globalGrants;
+      for (const line of rule.split("\n")) appendGrant(file, tier, line);
     }
   };
 
@@ -596,7 +634,9 @@ export default function activate(pi: PiApi): void {
           ? target
           : normalizePath(`${root.replace(/\/+$/, "")}/${target}`);
       if (resolvedTarget !== undefined && resolvedTarget !== "" && policyDenied(resolvedTarget)) {
-        ui.notify?.(`pi-sydbox: policy deny (sandbox.json) on ${resolvedTarget}: no grant can lift it — edit sandbox.json`);
+        // resolvedTarget is record-derived (workload-chosen path): quoted and
+        // truncated, never raw in a notification line (P0, task 5).
+        ui.notify?.(`pi-sydbox: policy deny (sandbox.json) on ${showUntrusted(resolvedTarget)}: no grant can lift it — edit sandbox.json`);
         continue; // do not prompt, do not seed the dedupe with a dead rule
       }
       // Already granted (or repeated in this batch): no second prompt for the

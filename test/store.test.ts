@@ -64,3 +64,12 @@ test("a write leaves no temporary file behind", () => {
   assert.doesNotMatch(raw, /tmp-\d+/);
   assert.equal(JSON.parse(raw).length, 1);
 });
+
+test("a rule with an empty or root target is refused (P0 empty-glob guard)", () => {
+  const file = store();
+  for (const rule of ["allow/lpath,npath,rpath,readdir+", "allow/lpath,npath,rpath,readdir+/", "allow/mkdir+"]) {
+    assert.throws(() => appendGrant(file, "project", rule), GrantStoreError, rule);
+  }
+  // A root-shaped denial must also leave nothing behind on failure.
+  assert.deepEqual(readGrants(file), []);
+});

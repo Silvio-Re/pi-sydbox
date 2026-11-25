@@ -42,6 +42,14 @@ export function appendGrant(file: string, tier: Tier, rule: string): void {
   }
   if (typeof rule !== "string" || rule.trim() === "") throw new GrantStoreError("empty rule");
   if (rule.includes("\n")) throw new GrantStoreError("rule must be a single line");
+  // A rule whose target collapsed to nothing (or to the filesystem root) would
+  // persist a blanket grant behind a local-looking denial: refuse it outright
+  // (P0, empty-glob guard; recordToGrant refuses to emit these, the store
+  // refuses them again so no other writer can smuggle one in).
+  const target = rule.slice(rule.lastIndexOf("+") + 1).trim();
+  if (target === "" || target === "/") {
+    throw new GrantStoreError(`grant target is empty or the filesystem root: ${rule}`);
+  }
 
   const grants = readGrants(file);
   if (grants.some((g) => g.tier === tier && g.rule === rule)) return;

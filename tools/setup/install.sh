@@ -110,6 +110,9 @@ fi
 
 work="$artifact"
 extract_dir=""
+# shellcheck disable=SC2317,SC2329  # invoked indirectly: the EXIT trap below fires
+# this; the analyzer does not follow trap-name references (same rationale as the
+# disable on cleanup() in corpus/run.sh)
 cleanup() {
   if [ -n "$extract_dir" ]; then rm -rf -- "$extract_dir"; fi
 }

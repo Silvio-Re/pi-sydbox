@@ -1,6 +1,9 @@
 # pi-sydbox — transition design
 
-Replaces `pi-landstrip` 0.20.29 with syd 3.60.0 behind a local pi extension.
+Replaces `pi-landstrip` 0.20.29 with the pinned syd 3.59.0 behind a local pi
+extension (3.59.0, not the newer releases: syd 3.60.0 refuses startup below
+Linux 7.2, and the environment kernel is frozen older; see `syd.lock` and
+`docs/environment.md`).
 Written 2026-11-23. Every phase below has a gate; no phase starts before the
 previous gate passes. All probes run in a plain terminal, never inside an
 existing sandbox.
@@ -40,16 +43,20 @@ Policied-surface decisions, made deliberately (external review 2):
   re-read from the session offset on every tool_result and grows without
   bound. Acceptable for a per-project session log while sessions are
   short; revisit before any long-lived always-on deployment.
-- `AUTO_DENY_MS = 120_000` is PROVISIONAL: the phase 0 RPC-timeout
-  measurement it should rest on was never taken.
+- `AUTO_DENY_MS = 120_000` is MEASURED (P0, 2026-11-25): pi-coding-agent 1.6.0
+  honors the dialog `timeout` option; an unanswered deny prompt auto-resolves
+  120 070 ms after the request in a headless RPC probe
+  (docs/evidence/p0-auto-deny-20261125/). The pi-web browser-layer confirmation is the
+  roadmap M3 item.
 
 ## Environment (verified 2026-11-23)
 
 - Ubuntu 24.04.5, kernel 6.8.0-151-generic, Linux VM guest. Inert for syd: no
   KVM, no user namespace, ptrace of own children unaffected by Yama.
 - Bundled pi-coding-agent 1.6.0. `ctx.ui.custom` and the "Custom UI / Dialogs"
-  section exist in its `docs/extensions.md`; the pi-web RPC timeout is unmeasured
-  and must be measured before the auto-deny delay is chosen.
+  section exist in its `docs/extensions.md`; the dialog auto-resolve timeout is
+  measured against it (P0, 2026-11-25, docs/evidence/p0-auto-deny-20261125/), and the
+  extension sends the `timeout` option pi documents for dialogs.
 - Current engine: `npm:pi-landstrip@0.20.29` (api 0.20.29 + binary 0.20.29). A
   hoisted `@landstrip/landstrip-linux-x64@0.22.0` is present and never executed.
 - `~/.pi/agent/sandbox.json` is valid JSON and is an approved policy artifact, not
@@ -157,7 +164,10 @@ coverage tests, namespace self-test), `launcher.ts` (pipe, dup2 to fd >= 3, log 
 `records.ts` (schema-validated parser), `mapper.ts` (record to grant), `dialog.ts`
 (state machine over `ctx.ui.custom`, timeout derived from the measured RPC budget,
 budget and rerun limits flagged as deliberate additions), `store.ts` (approvals in
-landstrip schema so the fallback reads them unchanged), `index.ts` (tool gating,
+landstrip schema so the fallback reads them unchanged → superseded: grants live
+in a sibling JSON file the engine owns, by design, so the two sandboxes share a
+directory without schema interference — see the committed comment header of
+`src/store.ts`), `index.ts` (tool gating,
 invariant 7).
 
 Gate: unit tests green, D-corpus differential green headless against pi 1.6.0.

@@ -11,7 +11,7 @@ function fakeUi(answer: string | undefined, opts: { throwOnSelect?: boolean } = 
     timeouts,
     async select(prompt, labels, options) {
       seen.push(prompt);
-      timeouts.push(options?.timeoutMs);
+      timeouts.push(options?.timeout);
       assert.deepEqual(labels, CHOICE_LABELS);
       if (opts.throwOnSelect) throw new Error("ui went away");
       return answer;
@@ -53,7 +53,7 @@ test("the timeout is the documented constant unless the caller overrides it", as
   assert.deepEqual(withDefault.timeouts, [AUTO_DENY_MS]);
 
   const overridden = fakeUi("Deny");
-  await choose(overridden, "prompt", { timeoutMs: 5_000 });
+  await choose(overridden, "prompt", { timeout: 5_000 });
   assert.deepEqual(overridden.timeouts, [5_000]);
 });
 

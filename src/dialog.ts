@@ -4,10 +4,12 @@
  * The state machine is pure and takes a UI port, so the decision logic is
  * testable without a terminal. `pi/index.ts` adapts pi's `ctx.ui` onto that port.
  *
- * Open number: the auto-deny delay. It should derive from the measured pi-web RPC
- * timeout (phase 0 step 5), which was never measured; a wrong value only changes
- * how long an unanswered prompt stays on screen, so it is a documented constant
- * here rather than a hidden default, and callers may override it per launch.
+ * Open number: the auto-deny delay. It is now MEASURED (P0, 2026-11-25):
+ * pi-coding-agent 1.6.0 honors the dialog `timeout` option and auto-resolves
+ * an unanswered select 120 070 ms after the request when 120 000 is sent
+ * (headless RPC probe, evidence committed under docs/evidence/p0-auto-deny-20261125/).
+ * The value stays a documented constant here rather than a hidden default,
+ * and callers may override it per launch.
  *
  * The prompt budget lives here as a constant the caller enforces per tool
  * result: past the budget the remaining denials stay denied with a count
@@ -24,7 +26,10 @@ export interface DialogChoice {
 export const TIERS = ["once", "session", "project", "global"] as const;
 export type Tier = (typeof TIERS)[number];
 
-/** PROVISIONAL until phase-0 step 5 is measured on pi-web. Override per call. */
+/** Measured (P0, 2026-11-25): pi-coding-agent 1.6.0 honors the dialog
+ * `timeout` option; an unanswered deny prompt auto-resolves 70 ms past this
+ * value in a headless RPC probe (docs/evidence/p0-auto-deny-20261125/). Override per
+ * call. */
 export const AUTO_DENY_MS = 120_000;
 
 /** Prompts asked per tool result; further denials stay denied with a notice. */
@@ -51,13 +56,18 @@ const LABEL_TIER: Readonly<Record<ChoiceLabel, Tier | null>> = Object.freeze({
 
 /** The slice of `ctx.ui` this module needs; pi's real context satisfies it. */
 export interface UiPort {
-  select(prompt: string, labels: readonly string[], opts?: { timeoutMs?: number }): Promise<string | undefined>;
+  select(prompt: string, labels: readonly string[], opts?: { timeout?: number }): Promise<string | undefined>;
   notify?(message: string): void;
 }
 
 export interface ChooseOptions {
-  /** Auto-deny delay for this prompt. Defaults to AUTO_DENY_MS. */
-  timeoutMs?: number;
+  /** Auto-deny delay for this prompt, in ms. Defaults to AUTO_DENY_MS.
+   * The key pi expects on its dialog API is `timeout` (pi-coding-agent 1.6.0,
+   * `ExtensionUIDialogOptions`, its docs/rpc-extension-ui.md): sending the old
+   * `timeoutMs` was silently ignored by every mode, so an unanswered prompt
+   * blocked forever instead of auto-denying (P0 — the fix, and the reason
+   * AUTO_DENY_MS used to be dead config). */
+  timeout?: number;
 }
 
 /**
@@ -72,10 +82,10 @@ export async function choose(
   prompt: string,
   options: ChooseOptions = {},
 ): Promise<DialogChoice> {
-  const timeoutMs = options.timeoutMs ?? AUTO_DENY_MS;
+  const timeout = options.timeout ?? AUTO_DENY_MS;
   let answer: string | undefined;
   try {
-    answer = await ui.select(prompt, CHOICE_LABELS, { timeoutMs });
+    answer = await ui.select(prompt, CHOICE_LABELS, { timeout });
   } catch (err) {
     ui.notify?.(`approval dialog failed, denying: ${(err as Error).message}`);
     return { kind: "reject" };

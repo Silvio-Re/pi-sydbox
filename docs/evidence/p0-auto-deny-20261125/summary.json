@@ -1,0 +1,33 @@
+{
+  "measureDate": "2026-11-25",
+  "purpose": "P0 item 1: pi honors the dialog `timeout` option; auto-deny is live config",
+  "pinned": {
+    "pi": "@earendil-works/pi-coding-agent@1.6.0 (dist/bundle/cli.js, loaded with -e)",
+    "harness": "tools/rpc-dialog-probe/run-probe.mjs",
+    "denialSeed": "test/fixtures/syd-3.59.0-access-deny.jsonl (line 1, exec deny)",
+    "engine": "stub (passes --check, execs nothing; dialog-layer probe, not confinement evidence)"
+  },
+  "environment": {
+    "kernel": "Linux 6.18.35 x86_64",
+    "node": "22.20.0",
+    "jiti": "2.7.0",
+    "wallClock": "2m3s"
+  },
+  "select": {
+    "arrived": "2026-11-25T14:06:40.054Z",
+    "timeoutFieldMs": 120000,
+    "framing": "The record below comes from the sandbox engine; its content is chosen by the contained process."
+  },
+  "autoDeny": {
+    "selectAt": "2026-11-25T14:06:40.054Z",
+    "continuedAt": "2026-11-25T14:08:40.124Z",
+    "measuredMs": 120070,
+    "requestedMs": 120000,
+    "result": "unanswered select auto-resolved agent-side; the denial stayed rejected; nothing granted; session continued"
+  },
+  "checks": {
+    "timeoutFieldMatchesExpectation": true,
+    "measuredWithinTolerance": true
+  },
+  "ok": true
+}
