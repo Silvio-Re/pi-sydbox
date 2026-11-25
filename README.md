@@ -1,5 +1,12 @@
 # pi-sydbox
 
+> **Vibe-coded project.** This repository was written with an LLM agent
+> driving the editor (ATDD, agent-run probes and verdicts). Do not blindly
+> trust it: the enforcement claims rest on the evidence chain in
+> `agent_dir/spike/` and `docs/`, read them before relying on the sandbox —
+> and re-verify on your own machine before using it to contain anything
+> adversarial.
+
 Replaces the `pi-landstrip` enforcement engine with [syd](https://sydbox.exherbo.org/)
 (Landlock + seccomp-bpf + seccomp-notify), keeping the pi-side approval UX and the
 existing `sandbox.json` policy artifact.
