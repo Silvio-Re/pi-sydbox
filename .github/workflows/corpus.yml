@@ -15,7 +15,7 @@ name: corpus
 #   - workflow_dispatch, so a maintainer can still run the band check by
 #     hand on any branch once this workflow is on main.
 on:
-  workflow_dispatch
+  workflow_dispatch:
   push:
     branches: [p1-provable-claims]
     paths:
