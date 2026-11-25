@@ -57,6 +57,14 @@ export const DENIALS: ReadonlySet<string> = new Set([
  * `:`→`!` rewrite would corrupt IPv6.
  */
 
+/** Path (and net target) records must never smuggle a line break: the record
+ * content is chosen by the sandboxed workload, and a target carrying \n or \r
+ * would inject a line into the compiled profile — every allow line is checked
+ * to start with `allow/`, but a forged line that does still passes that check.
+ * No real filesystem path or network address contains either, so refusing the
+ * record (null, stays denied) loses nothing. (P0, untrusted record content.) */
+const LINEBREAK = /[\n\r]/;
+
 /**
  * Returns the narrowest grant that would have let the record through, or null
  * when the record is not a denial, carries a cap this build does not recognise,
@@ -72,7 +80,7 @@ export function recordToGrant(record: AnyRecord, root: string): Grant | null {
 
   if (record.kind === "net") {
     const target = record.addr ?? record.unix;
-    if (!target) return null;
+    if (!target || LINEBREAK.test(target)) return null;
     const rule = record.addr ? netRule(record.addr) : `allow/net/connect+${target}`;
     return { tier: "once", rule };
   }
@@ -80,11 +88,12 @@ export function recordToGrant(record: AnyRecord, root: string): Grant | null {
   if (record.kind === "ctl") {
     // Tip-faithful: the engine itself prints `allow/ioctl+TCGETS` for these
     // (fixtures/capture); TCGETS is a tty ioctl group, not a path.
+    if (record.ctl.some((name) => LINEBREAK.test(name))) return null;
     return { tier: "once", rule: `allow/ioctl+${record.ctl.join(",")}` };
   }
 
   const path = record.path;
-  if (path === undefined || path.length === 0) return null;
+  if (path === undefined || path.length === 0 || LINEBREAK.test(path)) return null;
   // A compound cap ("read,write" — the engine joins an array cap with commas)
   // maps to the deduplicated union of its components' categories; an unknown
   // component means the record stays denied (null), as for a single unknown cap.
@@ -111,6 +120,11 @@ export function recordToGrant(record: AnyRecord, root: string): Grant | null {
   // project root keeps the grant inside the tree the run belongs to.
   const absolute = normalizePath(path.startsWith("/") ? path : `${root.replace(/\/+$/, "")}/${path}`);
   const base = absolute.replace(/\/\*+$/, "");
+  // An all-glob denial path (`/`, `/*`, `/**`…) collapses to an empty or root
+  // target: what looks like a local denial must not round-trip into a blanket
+  // `allow/<cats>+/` grant. The record stays denied — if a tree is truly meant
+  // to be writable, the policy says so, not a collapsed glob (P0).
+  if (base === "" || base === "/") return null;
   const ruleFor = (target: string) => `allow/${cats}+${target}`;
   // mkdir/rmdir carry no `type` in captures and their tips print the singular
   // path form only (`allow/mkdir+…`, `allow/rmdir+…`): the dual-spelling

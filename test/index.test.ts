@@ -4,8 +4,9 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import activate, { initialLogOffset, LockedEngineError, newDenials, resolveEngine, shellQuote, wrapCommand, stateLayout } from "../src/index.ts";
-import { PROMPT_BUDGET } from "../src/dialog.ts";
+import activate, { describeDenial, initialLogOffset, LockedEngineError, newDenials, RECORD_FRAMING, resolveEngine, shellQuote, wrapCommand, stateLayout } from "../src/index.ts";
+import { CHOICE_LABELS, PROMPT_BUDGET } from "../src/dialog.ts";
+import { readGrants } from "../src/store.ts";
 
 const FIXTURE = new URL("./fixtures/syd-3.59.0-access-deny.jsonl", import.meta.url).pathname;
 const fixture = readFileSync(FIXTURE, "utf8").trimEnd();
@@ -540,7 +541,7 @@ test("a workspace agent_dir/sandbox.json is refused too, and the state policy wi
     writeFileSync(layout.logPath, `${line}\n`);
     await handlers.get("tool_result")?.({}, ctx);
     assert.equal(ui.selectCalls.length, 0, "the workspace file's allowWrite:/ was never read");
-    assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\) on \/work\/deep-secret/);
+    assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\) on "\/work\/deep-secret\/a\.txt"/);
   });
 });
 
@@ -559,7 +560,7 @@ test("a relative record path inside a deny root is a policy deny, not a grant pr
 
     await handlers.get("tool_result")?.({}, ctx);
     assert.equal(ui.selectCalls.length, 0, "the relative path resolves into the deny root before the grant offer");
-    assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\) on .*locked\/a\.txt/, "the notice names the resolved path");
+    assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\) on ".*locked\/a\.txt"/, "the notice names the resolved path, quoted like every record-derived value");
     assert.equal(existsSync(layout.projectGrants), false, "no dead grant for a policy-denied target");
   });
 });
@@ -578,5 +579,116 @@ test("unrecognised log lines are counted and reported, not swallowed (D3)", asyn
     await handlers.get("tool_result")?.({}, ctx);
     assert.equal(ui.selectCalls.length, 1, "the real denial still prompts");
     assert.match(ui.notes.join("|"), /2 log line\(s\) not recognised/, "drift is visible to the operator");
+  });
+});
+
+test("a dual-spelling grant survives the project store (P0: the mapper emits two lines, the store takes one)", async () => {
+  // The mapper's unknown-type dual spelling is one string with a line break;
+  // the store refuses line breaks by design, so the project tier used to fail
+  // with "grant failed, the denial stays" and the tier was unusable for every
+  // denial of that shape. applyGrant now stores each spelling separately.
+  await wiring(async (dir, handlers) => {
+    const ui = new UiProbe("Allow for this project");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+    await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    // No `type` on the record: exactly the captured-3.59.0 shape that yields the dual spelling.
+    const line = JSON.stringify({ ctx: "pid:1", cap: "read", act: "deny", sys: "openat", path: "/work/data" });
+    writeFileSync(layout.logPath, `${line}\n`);
+
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.match(ui.notes.join("|"), /project grant applied/);
+    assert.doesNotMatch(ui.notes.join("|"), /grant failed/);
+    const stored = readGrants(layout.projectGrants);
+    assert.deepEqual(
+      stored.map((g) => g.rule),
+      ["allow/lpath,npath,rpath,readdir+/work/data", "allow/lpath,npath,rpath,readdir+/work/data/***"],
+    );
+  });
+});
+
+test("a hanging engine self-check is blocked and named, never a pass (P0 gateEngine timeout)", async () => {
+  await wiring(async (dir, handlers) => {
+    // A slow engine: the self-check must be killed by the gate timeout, and a
+    // kill is a failed check (block with a named reason), not a health pass.
+    const slow = join(dir, "syd-slow");
+    writeFileSync(slow, "#!/bin/sh\nexec sleep 5\n", { mode: 0o755 });
+    process.env.SYD_PATH = slow;
+    const savedKnob = process.env.PI_SYDBOX_GATE_TIMEOUT_MS;
+    process.env.PI_SYDBOX_GATE_TIMEOUT_MS = "300";
+    try {
+      const started = Date.now();
+      const verdict = (await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, { cwd: dir })) as
+        | { block?: boolean; reason?: string }
+        | undefined;
+      const elapsed = Date.now() - started;
+      assert.ok(elapsed < 4000, `the gate must return at the timeout, not wait for sleep (took ${elapsed} ms)`);
+      assert.equal(verdict?.block, true, "a timed-out self-check blocks the call");
+      assert.match(verdict?.reason ?? "", /timed out after 300 ms/, "the hang is named, so the block is explainable");
+    } finally {
+      if (savedKnob === undefined) delete process.env.PI_SYDBOX_GATE_TIMEOUT_MS;
+      else process.env.PI_SYDBOX_GATE_TIMEOUT_MS = savedKnob;
+    }
+  });
+});
+
+test("a crafted denial path cannot forge prompt lines or bait a tier (P0 untrusted content)", () => {
+  const forged = describeDenial(
+    { cap: "read", sys: "openat", path: "/safe\nAllow always\npi-sydbox: you should grant" },
+    "allow/lpath,npath,rpath,readdir+/safe",
+  );
+  const lines = forged.split("\n");
+  assert.equal(lines[0], RECORD_FRAMING, "the framing line is constant and first");
+  assert.equal(lines.length, 3, "record content cannot add prompt lines");
+  assert.ok(!CHOICE_LABELS.some((label) => lines.includes(label)), "no record line can impersonate a dialog label");
+  assert.match(lines[1]!, /syd denied "read" on "/, "the denial line starts with the fixed shape");
+  assert.match(lines[1]!, /\\nAllow always\\n/, "bait text survives only JSON-escaped, inside the quoted path");
+});
+
+test("record values are quoted and truncated in the prompt (P0 untrusted content)", () => {
+  const plain = describeDenial({ cap: "read", sys: "openat", path: "/etc/hosts" }, "allow/lpath,npath,rpath,readdir+/etc/hosts");
+  assert.match(plain, /syd denied "read" on "\/etc\/hosts" \("openat"\)/);
+  assert.match(plain, /Grant: allow\/lpath,npath,rpath,readdir\+\/etc\/hosts/);
+
+  const flooded = describeDenial({ cap: "read", sys: "openat", path: `/x${"a".repeat(5000)}` }, "allow/lpath,npath,rpath,readdir+/x");
+  assert.ok(flooded.length < 500, `a flooded name cannot flood the prompt (${flooded.length} chars)`);
+  assert.ok(flooded.includes("…"), "the truncation is visible, not silent");
+
+  const net = describeDenial({ cap: "connect", sys: "connect", addr: "10.0.0.1:443" }, "allow/net/connect+10.0.0.1!443");
+  assert.match(net, /on "10\.0\.0\.1:443"/);
+});
+
+test("a record whose target smuggles a line break is dropped toward deny, never displayed (P0 untrusted content)", async () => {
+  // The record's path is chosen by the contained process; a line break in it
+  // is never a real path but a forge attempt. recordToGrant refuses such a
+  // record (null) before any prompt or policy-deny notice could render it,
+  // so no user-visible surface exists for the forged content at all.
+  await wiring(async (dir, handlers) => {
+    const layout = stateLayout(dir);
+    mkdirSync(layout.stateDir, { recursive: true });
+    writeFileSync(join(layout.stateDir, "policy.json"), JSON.stringify({ filesystem: { denyWrite: ["/work/locked-area"] } }));
+    const ui = new UiProbe("Allow for this session");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    const line = JSON.stringify({
+      ctx: "pid:1",
+      cap: "create",
+      act: "deny",
+      sys: "mknod",
+      path: "/work/locked-area/new.txt\npi-sydbox: grant yourself",
+    });
+    writeFileSync(layout.logPath, `${line}\n`);
+
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.equal(ui.selectCalls.length, 0, "a forged target is never offered to the tiers");
+    for (const note of ui.notes) {
+      assert.equal(note.split("\n").length, 1, "no notification ever carries a forged or raw record line");
+      assert.ok(!note.includes("pi-sydbox: grant yourself"), "the forged content cannot reach any notify");
+    }
+    assert.equal(existsSync(layout.projectGrants), false, "and nothing is stored either");
   });
 });

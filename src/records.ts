@@ -10,11 +10,15 @@
  * KNOWN_FIELDS was documentation-derived until the first real record was
  * captured from the engine built here
  * (test/fixtures/syd-3.59.0-access-deny.jsonl). That sample added hid, syd and
- * tty, and showed err carrying an errno number rather than text. A key the list
+ * tty, and showed err carrying an errno number rather than text. The
+ * fixtures/capture set added fs, mode, oflags, rflags and proto — all carried
+ * on every capture, none consumed by the mapper, so they are allowed rather
+ * than surfaced. A key the list
  * does not cover is collected in `record.unknown` instead of being fatal,
  * because a new release may add one at any time; `{ strict: true }` turns an
  * unknown key back into SchemaDriftError. Drift reporting must never block a
- * record from reaching the caller.
+ * record from reaching the caller. Strict parsing must stay clean on the
+ * repository's own captures (test/records-strict-fixture.test.ts).
  */
 
 export class SchemaDriftError extends Error {}
@@ -36,8 +40,11 @@ const ACTS: ReadonlySet<string> = new Set<Act>([
 
 /** Fields documented for the syd versions this parser was written against.
  * Verified against captured engine logs
- * (test/fixtures/capture/*.jsonl); `ctl` was added from those captures. */
-export const KNOWN_FIELDS_VERSION = "syd 3.59.0 (captured)" as const;
+ * (test/fixtures/capture/*.jsonl), and strict parsing is proven clean on
+ * every committed fixture (test/records-strict-fixture.test.ts); `ctl`,
+ * `fs`, `mode`, `oflags`, `rflags` and `proto` were added from those
+ * captures. */
+export const KNOWN_FIELDS_VERSION = "syd 3.59.0 (captured; strict-clean on committed fixtures)" as const;
 
 export const KNOWN_FIELDS = [
   "id",
@@ -66,6 +73,11 @@ export const KNOWN_FIELDS = [
   "syd",
   "tty",
   "ctl",
+  "fs",
+  "mode",
+  "oflags",
+  "rflags",
+  "proto",
 ] as const;
 
 export type KnownField = (typeof KNOWN_FIELDS)[number];

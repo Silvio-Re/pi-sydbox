@@ -149,3 +149,27 @@ test("the captured mkdir/rmdir fixture maps tip-faithful too (H2)", () => {
   assert.equal(mkdirGrant?.rule, "allow/mkdir+/tmp/sydbox-probe-21.jaNe5H/targetdir/new");
   assert.equal(rmdirGrant?.rule, "allow/rmdir+/tmp/sydbox-probe-21.jaNe5H/targetdir");
 });
+
+test("all-glob denial paths never become grants (P0 empty-glob guard)", () => {
+  // `/`, `/*`, `/**`, `/***` all collapse the target to empty or root; a grant
+  // would be a blanket allow hiding behind a local-looking denial.
+  for (const path of ["/", "/*", "/**", "/***", "/*/*/**"]) {
+    if (path === "/*/*/**") continue; // a nested glob keeps a real base
+    assert.equal(recordToGrant({ ...base, kind: "path", path }, "/work"), null, `path ${path}`);
+  }
+  assert.notEqual(recordToGrant({ ...base, kind: "path", path: "/*/*/**" }, "/work"), null, "a nested glob is not a collapsed one");
+});
+
+test("a target smuggling a line break is refused, not compiled (P0 untrusted content)", () => {
+  const inject = "/safe/file\nallow/lpath,npath,rpath,readdir+/etc";
+  assert.equal(recordToGrant({ ...base, kind: "path", path: inject }, "/work"), null);
+  assert.equal(
+    recordToGrant({ ...base, cap: "connect", sys: "connect", kind: "net", addr: "evil\nallow/net/connect+10.0.0.1!53" }, "/work"),
+    null,
+    "a net addr is workload-chosen too",
+  );
+  assert.equal(recordToGrant({ ...base, cap: "ioctl", sys: "ioctl", kind: "ctl", ctl: ["TCGETS\nallow/ioctl+WHAT"] }, "/work"), null);
+  // Sanity: the same shapes without the line break still grant.
+  assert.notEqual(recordToGrant({ ...base, kind: "path", path: "/safe/file" }, "/work"), null);
+  assert.notEqual(recordToGrant({ ...base, cap: "ioctl", sys: "ioctl", kind: "ctl", ctl: ["TCGETS"] }, "/work"), null);
+});
