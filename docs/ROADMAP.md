@@ -303,7 +303,7 @@ merged into another order's session. One row per order. Do not reorder rows.
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
-| P1 provable claims | vm | M1 | doing | |
+| P1 provable claims | vm | M1 | blocked (jobs 1-4 done: citation sweep, corpus d04-d14 + p01, make gate, corpus.yml; job 5 runner evidence not captured: agent authority ends at the API surface, no workflow-dispatch or artifact-download tool, dispatch requires the workflow on main which a PR merge must authorize) | PR #2 (p1-provable-claims); docs/evidence/p1-20261125/ pending the dispatched run |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
