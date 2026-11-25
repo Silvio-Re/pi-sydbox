@@ -2,8 +2,9 @@
 
 > **Vibe-coded project.** This repository was written with an LLM agent
 > driving the editor (ATDD, agent-run probes and verdicts). Do not blindly
-> trust it: the enforcement claims rest on the evidence chain in
-> `agent_dir/spike/` and `docs/`, read them before relying on the sandbox —
+> trust it: the enforcement claims rest on the committed evidence chain
+> (`docs/evidence/`, sanitized records, each linked from the claim that
+> cites it) — read it before relying on the sandbox —
 > and re-verify on your own machine before using it to contain anything
 > adversarial.
 
