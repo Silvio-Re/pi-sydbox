@@ -1,0 +1,48 @@
+make --quiet --no-print-directory all-recursive
+Making all in include
+Making all in src
+Making all in .
+  CC       libseccomp_la-api.lo
+  CC       libseccomp_la-system.lo
+  CC       libseccomp_la-helper.lo
+  CC       libseccomp_la-gen_pfc.lo
+  CC       libseccomp_la-gen_bpf.lo
+  CC       libseccomp_la-hash.lo
+  CC       libseccomp_la-db.lo
+  CC       libseccomp_la-arch.lo
+  CC       libseccomp_la-arch-x86.lo
+  CC       libseccomp_la-arch-x86_64.lo
+  CC       libseccomp_la-arch-x32.lo
+  CC       libseccomp_la-arch-arm.lo
+  CC       libseccomp_la-arch-aarch64.lo
+  CC       libseccomp_la-arch-loongarch64.lo
+  CC       libseccomp_la-arch-m68k.lo
+  CC       libseccomp_la-arch-mips.lo
+  CC       libseccomp_la-arch-mips64.lo
+  CC       libseccomp_la-arch-mips64n32.lo
+  CC       libseccomp_la-arch-parisc.lo
+  CC       libseccomp_la-arch-parisc64.lo
+  CC       libseccomp_la-arch-ppc.lo
+  CC       libseccomp_la-arch-ppc64.lo
+  CC       libseccomp_la-arch-riscv64.lo
+  CC       libseccomp_la-arch-s390.lo
+  CC       libseccomp_la-arch-s390x.lo
+  CC       libseccomp_la-arch-sh.lo
+  CC       libseccomp_la-syscalls.lo
+  CC       libseccomp_la-syscalls.perf.lo
+  CCLD     libseccomp.la
+Making all in tools
+  CC       scmp_sys_resolver.o
+  CC       scmp_arch_detect.o
+  CC       scmp_bpf_disasm.o
+  CC       util.lo
+  CC       scmp_bpf_sim.o
+  CC       scmp_api_level.o
+  CCLD     scmp_sys_resolver
+  CCLD     scmp_api_level
+  CCLD     scmp_arch_detect
+  CCLD     util.la
+  CCLD     scmp_bpf_disasm
+  CCLD     scmp_bpf_sim
+Making all in tests
+Making all in doc

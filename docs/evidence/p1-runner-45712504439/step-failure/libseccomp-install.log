@@ -1,0 +1,45 @@
+Making install in include
+ /usr/bin/mkdir -p '@HOME@/.local/opt/libseccomp-2.6.0/include'
+ /usr/bin/install -c -m 644 seccomp.h seccomp-syscalls.h '@HOME@/.local/opt/libseccomp-2.6.0/include'
+Making install in src
+Making install in .
+ /usr/bin/mkdir -p '@HOME@/.local/opt/libseccomp-2.6.0/lib'
+ /bin/bash ../libtool   --mode=install /usr/bin/install -c   libseccomp.la '@HOME@/.local/opt/libseccomp-2.6.0/lib'
+libtool: install: /usr/bin/install -c .libs/libseccomp.so.2.6.0 @HOME@/.local/opt/libseccomp-2.6.0/lib/libseccomp.so.2.6.0
+libtool: install: (cd @HOME@/.local/opt/libseccomp-2.6.0/lib && { ln -s -f libseccomp.so.2.6.0 libseccomp.so.2 || { rm -f libseccomp.so.2 && ln -s libseccomp.so.2.6.0 libseccomp.so.2; }; })
+libtool: install: (cd @HOME@/.local/opt/libseccomp-2.6.0/lib && { ln -s -f libseccomp.so.2.6.0 libseccomp.so || { rm -f libseccomp.so && ln -s libseccomp.so.2.6.0 libseccomp.so; }; })
+libtool: install: /usr/bin/install -c .libs/libseccomp.lai @HOME@/.local/opt/libseccomp-2.6.0/lib/libseccomp.la
+libtool: install: /usr/bin/install -c .libs/libseccomp.a @HOME@/.local/opt/libseccomp-2.6.0/lib/libseccomp.a
+libtool: install: chmod 644 @HOME@/.local/opt/libseccomp-2.6.0/lib/libseccomp.a
+libtool: install: ranlib @HOME@/.local/opt/libseccomp-2.6.0/lib/libseccomp.a
+libtool: finish: PATH="@SCRATCH@/tools/bin:@HOME@/.cargo/bin:/snap/bin:@HOME@/.local/bin:/opt/pipx_bin:@HOME@/.cargo/bin:@HOME@/.config/composer/vendor/bin:/usr/local/.ghcup/bin:@HOME@/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/sbin" ldconfig -n @HOME@/.local/opt/libseccomp-2.6.0/lib
+----------------------------------------------------------------------
+Libraries have been installed in:
+   @HOME@/.local/opt/libseccomp-2.6.0/lib
+
+If you ever happen to want to link against installed libraries
+in a given directory, LIBDIR, you must either use libtool, and
+specify the full pathname of the library, or use the '-LLIBDIR'
+flag during linking and do at least one of the following:
+   - add LIBDIR to the 'LD_LIBRARY_PATH' environment variable
+     during execution
+   - add LIBDIR to the 'LD_RUN_PATH' environment variable
+     during linking
+   - use the '-Wl,-rpath -Wl,LIBDIR' linker flag
+   - have your system administrator add LIBDIR to '/etc/ld.so.conf'
+
+See any operating system documentation about shared libraries for
+more information, such as the ld(1) and ld.so(8) manual pages.
+----------------------------------------------------------------------
+Making install in tools
+ /usr/bin/mkdir -p '@HOME@/.local/opt/libseccomp-2.6.0/bin'
+  /bin/bash ../libtool   --mode=install /usr/bin/install -c scmp_sys_resolver '@HOME@/.local/opt/libseccomp-2.6.0/bin'
+libtool: install: /usr/bin/install -c .libs/scmp_sys_resolver @HOME@/.local/opt/libseccomp-2.6.0/bin/scmp_sys_resolver
+Making install in tests
+Making install in doc
+ /usr/bin/mkdir -p '@HOME@/.local/opt/libseccomp-2.6.0/share/man/man1'
+ /usr/bin/install -c -m 644 man/man1/scmp_sys_resolver.1 '@HOME@/.local/opt/libseccomp-2.6.0/share/man/man1'
+ /usr/bin/mkdir -p '@HOME@/.local/opt/libseccomp-2.6.0/share/man/man3'
+ /usr/bin/install -c -m 644 man/man3/seccomp_arch_add.3 man/man3/seccomp_arch_exist.3 man/man3/seccomp_arch_native.3 man/man3/seccomp_arch_remove.3 man/man3/seccomp_arch_resolve_name.3 man/man3/seccomp_attr_get.3 man/man3/seccomp_attr_set.3 man/man3/seccomp_export_bpf.3 man/man3/seccomp_export_bpf_mem.3 man/man3/seccomp_export_pfc.3 man/man3/seccomp_init.3 man/man3/seccomp_load.3 man/man3/seccomp_merge.3 man/man3/seccomp_precompute.3 man/man3/seccomp_release.3 man/man3/seccomp_reset.3 man/man3/seccomp_rule_add.3 man/man3/seccomp_rule_add_array.3 man/man3/seccomp_rule_add_exact.3 man/man3/seccomp_rule_add_exact_array.3 man/man3/seccomp_notify_alloc.3 man/man3/seccomp_notify_fd.3 man/man3/seccomp_notify_free.3 man/man3/seccomp_notify_id_valid.3 man/man3/seccomp_notify_receive.3 man/man3/seccomp_notify_respond.3 man/man3/seccomp_syscall_priority.3 man/man3/seccomp_syscall_resolve_name.3 man/man3/seccomp_syscall_resolve_name_arch.3 man/man3/seccomp_syscall_resolve_name_rewrite.3 man/man3/seccomp_syscall_resolve_num_arch.3 man/man3/seccomp_version.3 man/man3/seccomp_api_get.3 man/man3/seccomp_api_set.3 '@HOME@/.local/opt/libseccomp-2.6.0/share/man/man3'
+ /usr/bin/mkdir -p '@HOME@/.local/opt/libseccomp-2.6.0/lib/pkgconfig'
+ /usr/bin/install -c -m 644 libseccomp.pc '@HOME@/.local/opt/libseccomp-2.6.0/lib/pkgconfig'

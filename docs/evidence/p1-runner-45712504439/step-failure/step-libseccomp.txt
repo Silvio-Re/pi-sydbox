@@ -1,0 +1,26 @@
+== gperf 3.1 (build-time tool) ==
+fetch https://ftp.gnu.org/gnu/gperf/gperf-3.1.tar.gz
+gperf: @SCRATCH@/tools/bin/gperf
+== fetch ==
+https://github.com/seccomp/libseccomp/releases/download/v2.6.0/libseccomp-2.6.0.tar.gz
+sha256: 83b6085232d1588c379dc9b9cae47bb37407cf262e6e74993c61ba72d2a784dc
+
+== configure (prefix=@HOME@/.local/opt/libseccomp-2.6.0) ==
+
+== make ==
+
+== symbol check ==
+libseccomp.so: 1 hits
+libseccomp.so.2: 1 hits
+libseccomp.so.2.6.0: 1 hits
+libseccomp.a: 1 hits
+gperf: @SCRATCH@/tools/bin/gperf
+pkg-config modversion: 2.6.0
+
+== <LIBSECCOMP> ==
+version=2.6.0
+prefix=@HOME@/.local/opt/libseccomp-2.6.0
+sha256=83b6085232d1588c379dc9b9cae47bb37407cf262e6e74993c61ba72d2a784dc
+rebuild the engine with:
+  PKG_CONFIG_PATH=@HOME@/.local/opt/libseccomp-2.6.0/lib/pkgconfig LIBSECCOMP_LIB_PATH=@HOME@/.local/opt/libseccomp-2.6.0/lib \
+  LIBSECCOMP_LINK_TYPE=static bash tools/setup/build-engine.sh 3.59.0 --workdir @SCRATCH@

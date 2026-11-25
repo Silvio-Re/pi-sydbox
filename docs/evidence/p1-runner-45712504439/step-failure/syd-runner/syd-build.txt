@@ -1,0 +1,39 @@
+warning: refs/tags/v3.59.0 c2c280f79645b96135013a90ad4c972597b751e5 is not a commit!
+Note: switching to '7e602aaff043121842754002f904694a5e2ed431'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+building syd 3.59.0 at 7e602aaff043121842754002f904694a5e2ed431 (this takes a few minutes)
+<SYD-BUILD>
+version=p3.59.0
+versions=3.59.0
+tag=v3.59.0
+commit=7e602aaff043121842754002f904694a5e2ed431
+source=https://gitlab.exherbo.org/sydbox/sydbox.git
+workdir=@SCRATCH@/syd-3.59.0
+features="force", "log", "systemd"
+rustc=1.100.0
+cargo=1.100.0
+libseccomp=2.6.0
+cargo_home=@SCRATCH@/cargo-home
+banner=syd 3.59.0 (Take It Back)
+binary=@SCRATCH@/syd-3.59.0/target/release/syd
+bytes=69140808
+sha256=ddad53075eeb10406c9b57a1009a76b5934f86847a1522681388a9fe1b333915
+sha512=b5d34c7fbac239bbecf2f13c3ba3eefe0729d6705385e02e68490b8b1492da55e62f035ff3b5d92cd7c2e59ed1df5226db2a57b058b96ea910dfb805aab6914a
+prefix=@HOME@/.local/opt/syd-3.59.0
+install_status=installed
+</SYD-BUILD>

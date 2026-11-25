@@ -1,0 +1,46 @@
+cd lib; make all
+make[1]: Entering directory '@SCRATCH@/gperf-3.1/lib'
+gcc -g -O2 -I. -c ./getopt.c
+gcc -g -O2 -I. -c ./getopt1.c
+g++ -g -O2 -I. -c ./getline.cc
+g++ -g -O2 -I. -c ./hash.cc
+./getline.cc: In function ‘int getstr(char**, size_t*, FILE*, char, size_t)’:
+./getline.cc:58:20: warning: ISO C++17 does not allow ‘register’ storage class specifier [-Wregister]
+   58 |       register int c = getc (stream);
+      |                    ^
+rm -f libgp.a
+ar rc libgp.a getopt.o getopt1.o getline.o hash.o
+ranlib libgp.a
+make[1]: Leaving directory '@SCRATCH@/gperf-3.1/lib'
+cd src; make all
+make[1]: Entering directory '@SCRATCH@/gperf-3.1/src'
+g++ -g -O2 -I. -I./../lib -c ./version.cc
+g++ -g -O2 -I. -I./../lib -c ./positions.cc
+g++ -g -O2 -I. -I./../lib -c ./options.cc
+g++ -g -O2 -I. -I./../lib -c ./keyword.cc
+g++ -g -O2 -I. -I./../lib -c ./keyword-list.cc
+g++ -g -O2 -I. -I./../lib -c ./input.cc
+g++ -g -O2 -I. -I./../lib -c ./bool-array.cc
+g++ -g -O2 -I. -I./../lib -c ./hash-table.cc
+g++ -g -O2 -I. -I./../lib -c ./search.cc
+g++ -g -O2 -I. -I./../lib -c ./output.cc
+In file included from /usr/include/string.h:580,
+                 from ./input.cc:26:
+In function ‘void* memcpy(void*, const void*, size_t)’,
+    inlined from ‘void Input::read_input()’ at ./input.cc:926:28:
+/usr/include/x86_64-linux-gnu/bits/string_fortified.h:29:33: warning: ‘void* __builtin___memcpy_chk(void*, const void*, long unsigned int, long unsigned int)’ specified size between 9223372036854775808 and 18446744073709551615 exceeds maximum object size 9223372036854775807 [-Wstringop-overflow=]
+   29 |   return __builtin___memcpy_chk (__dest, __src, __len,
+      |          ~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~
+   30 |                                  __glibc_objsize0 (__dest));
+      |                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~
+g++ -g -O2 -I. -I./../lib -c ./main.cc
+g++ -g -O2  -o gperf version.o positions.o options.o keyword.o keyword-list.o input.o bool-array.o hash-table.o search.o output.o main.o ../lib/libgp.a -lm
+make[1]: Leaving directory '@SCRATCH@/gperf-3.1/src'
+cd tests; make all
+make[1]: Entering directory '@SCRATCH@/gperf-3.1/tests'
+make[1]: Nothing to be done for 'all'.
+make[1]: Leaving directory '@SCRATCH@/gperf-3.1/tests'
+cd doc; make all
+make[1]: Entering directory '@SCRATCH@/gperf-3.1/doc'
+make[1]: Nothing to be done for 'all'.
+make[1]: Leaving directory '@SCRATCH@/gperf-3.1/doc'
