@@ -3,8 +3,9 @@
 
 The release signature published next to the engine tarball is minisign, not
 OpenPGP, so `gpg --verify` reports "no valid OpenPGP data" no matter which key is
-imported. This script implements the wire format so verification needs no extra
-package:
+imported. This script implements the wire format so verification needs no
+`minisign` binary — the imports are the standard library plus `cryptography`
+(ed25519), the same interpreter that runs the machine-setup drivers.
 
     signature file   "untrusted comment: ..."  / b64(alg2 | keyid8 | sig64)
                      "trusted comment: ..."    / b64(global_sig64)

@@ -2,6 +2,65 @@
 
 ## [Unreleased]
 
+- H1 (external review 2): the sandbox policy is no longer read from inside
+  the confined tree. `loadPolicy` used to pick up `<cwd>/sandbox.json` or
+  `<cwd>/agent_dir/sandbox.json`, so a cloned repo could ship a policy that
+  disables its own confinement (`enabled:false`, `allowWrite:["/"]`)
+  silently — the same attack class S2 closed for the legacy grant store.
+  The policy now lives outside the workspace at `<state>/policy.json`
+  (state dir already keyed per project); a workspace file is never read.
+  When the state policy is missing and one exists in the workspace, the
+  tool call is refused with the exact one-line `cp` command that adopts
+  it — explicit opt-in, mirroring the S2 stance. `compileProfile` keeps
+  honoring `enabled:false` only for the state file.
+- H2 (external review 2): the grant pipeline now covers the record
+  classes the real engine emits, verified against the committed captured
+  fixtures (`test/fixtures/capture/*.jsonl`, previously unused by tests):
+  array `cap` (e.g. `["read","write"]`) maps the union of its categories
+  instead of drifting as unparseable; `mkdir`/`rmdir` map onto their
+  engine-tip rule forms (`allow/mkdir+…`); `ctl`-only ioctl records
+  surface as a notice (an ioctl deny offers no path to grant), never a
+  silent skip.
+- M1: a once-grant approved for a `!` command (user_bash path) lapses with
+  that spawn, same as the bash tool path — previously the clear only ran
+  on bash tool calls, so one "Allow once" persisted across every later
+  `!`. C2's invariant now holds on both launch paths.
+- M2: an unreadable or corrupt grant store (`grants.json`) is reported
+  ("cannot be read … ARE NOT in effect — restore or delete the file")
+  instead of silently continuing with an empty store; the changelog's
+  earlier restore-notifies claim (D2… `safeGrants`) describing the same
+  behavior was a naming error — the notify is real, the function name in
+  the log entry was not.
+- M3: the engine integrity gate now covers every engine the session can
+  run, not just the source-build path: `gateEngine` resolves against the
+  machine lock's recorded paths (`engine.path` *and*
+  `sourceBuild.installedPath`) and hash-checks whichever matched. The lock
+  now records `engine.binary.sha256` for the release path too — a
+  swapped binary under any recorded name is refused; an engine the lock
+  never recorded is refused by name ("not one the machine pin records").
+- M4: `policyDenied` resolves a relative record `path` against the
+  project root before comparing to deny roots — previously a relative
+  denial inside a deny root would be offered as a grant, persisting a
+  dead grant and re-prompting (the S3 loop, for the relative-path case).
+- M5 (reproducibility): the machine-setup drivers are vendored under
+  `tools/setup/` (build-libseccomp.sh, build-engine.sh, 03-smoke.sh,
+  install.sh) together with the trust anchor `tools/syd-release.pub`, so
+  the replay chain in `docs/environment.md` runs from the repository
+  alone; the working copies under `agent_dir/spike/` stay as the live
+  twins. Fixed the `2026-06-04` verification typo in `syd.lock` (it
+  predates the project; the actual verification ran 2026-11-23) and the
+  stale `minisign_verify.py` path references (the in-repo verifier is
+  `tools/minisign-verify.py`).
+- Minor: `initialLogOffset` seeds after the last complete line, so a
+  mid-write crash tail completes and parses on the next session instead
+  of being marked consumed mid-record. CI: actions pinned to commit
+  SHAs, `permissions: contents: read`, `persist-credentials: false`,
+  zizmor-clean; the shellcheck job covers `tools/setup/*.sh`.
+  `weekly-check.sh` derives the bundled-pi path from the running `pi`
+  binary (recorded path as fallback). design.md records three deliberate
+  decisions: `allowWrite` grants `exec` on the same tree (TPE still
+  guards), the deny-sink log has no rotation (revisit before any
+  long-lived deployment), and `AUTO_DENY_MS` stays PROVISIONAL.
 - S1 (external review): the record channel is no longer forgeable by the
   contained workload. The wrap shell opens the log append-only
   (`exec 3>>log`, `SYD_LOG_FD=3`) and the fd must stay inheritable across

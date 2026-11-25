@@ -17,7 +17,7 @@ sudo apt install build-essential pkg-config curl xz-utils
 - `libseccomp-dev` (the apt package, 2.5.5 on this guest) is not enough to build
   engine 3.59.0: the link fails with `undefined symbol: seccomp_export_bpf_mem`,
   which upstream added after 2.5.5. The engine build therefore runs against a
-  local libseccomp 2.6.0 (`agent_dir/spike/build-libseccomp.sh`). The apt package
+  local libseccomp 2.6.0 (`tools/setup/build-libseccomp.sh`; the agent_dir copies are the working twins). The apt package
   stays installed for `pkg-config` and for anything else wanting the system
   library.
 - Rust toolchain through rustup (`~/.cargo/bin/cargo`), floor 1.88 as declared
@@ -37,7 +37,7 @@ the newest release refuses to start on older kernels.
 | Host kernel | Engine | Where it comes from | Provenance |
 | --- | --- | --- | --- |
 | ≥ 7.2 | 3.60.0 release tarball | `https://distfiles.exherbo.org/sydbox/` | minisign signature, recorded in `syd.lock` |
-| < 7.2 | 3.59.0 built from tag | `agent_dir/spike/build-engine.sh` | tag + commit + toolchain, recorded in `syd.lock` |
+| < 7.2 | 3.59.0 built from tag | `tools/setup/build-engine.sh` | tag + commit + toolchain, recorded in `syd.lock` |
 
 Why: engine 3.60.0 introduced `quiet/lock` and `log/lock` rules that require
 landlock ABI 10, new in Linux 7.2, and the engine "fails at startup on older
@@ -50,23 +50,28 @@ older tarballs, so the older engine can only come from source.
 ### Release path (kernel ≥ 7.2)
 
 ```bash
-# 1. put the tarball and its .sig in agent_dir/dist/
+# 1. put the tarball and its .sig in agent_dir/dist/ (or any empty dir) and run:
+bash tools/verify-artifact.sh            # checks what is there now; prints the
+                                         # curl commands to fetch anything missing
+# or, against an already-populated dir:
 bash agent_dir/spike/02-verify.sh agent_dir/dist   # sha512 + minisign
-bash agent_dir/spike/install.sh                    # -> ~/.local/opt/syd-<version>/syd
+bash tools/setup/install.sh                    # -> ~/.local/opt/syd-<version>/syd
 ```
 
 The signature is minisign, not OpenPGP: `gpg --verify` cannot succeed on it
-whatever key is imported. `agent_dir/spike/minisign_verify.py` performs the
-check (key id `b1e47bc29cc65132`, algorithm `Ed`).
+whatever key is imported. `tools/minisign-verify.py` performs the
+check (key id `b1e47bc29cc65132`, algorithm `Ed`); the trust anchor is
+`tools/syd-release.pub`. The agent_dir `02-verify.sh`/`minisign_verify.py`
+files are the working twins of the vendored scripts.
 
 ### Source path (kernel < 7.2)
 
 ```bash
-bash agent_dir/spike/build-libseccomp.sh 2.6.0   # ~15 s
+bash tools/setup/build-libseccomp.sh 2.6.0   # ~15 s
 env PKG_CONFIG_PATH=~/.local/opt/libseccomp-2.6.0/lib/pkgconfig \
     LIBSECCOMP_LIB_PATH=~/.local/opt/libseccomp-2.6.0/lib \
     LIBSECCOMP_LINK_TYPE=static \
-    bash agent_dir/spike/build-engine.sh 3.59.0  # ~1m30 relink
+    bash tools/setup/build-engine.sh 3.59.0  # ~1m30 relink
 ```
 
 The script checks the prerequisites above, clones the pinned tag, builds with
@@ -99,16 +104,16 @@ workspace's `force`, `log`, `systemd`.
 | `libseccomp` | built from source 2.6.0, sha256 recorded in `syd.lock` |
 
 To reproduce a build bit-for-bit, force the recorded toolchain:
-`RUSTUP_TOOLCHAIN=1.98.1 bash agent_dir/spike/build-engine.sh 3.59.0 --force`.
+`RUSTUP_TOOLCHAIN=1.98.1 bash tools/setup/build-engine.sh 3.59.0 --force`.
 
 ## Replay checklist
 
 1. `sudo apt install build-essential pkg-config curl xz-utils`
 2. confirm the toolchain: `rustc --version` ≥ 1.88
-3. `bash agent_dir/spike/build-libseccomp.sh 2.6.0`
+3. `bash tools/setup/build-libseccomp.sh 2.6.0`
 4. build the engine with the environment from *Source path* above
 5. compare its `<SYD-BUILD>` sha256 with the one in `syd.lock`
-6. `bash agent_dir/spike/03-smoke.sh ~/.local/opt/syd-3.59.0/syd`, in a plain
+6. `bash tools/setup/03-smoke.sh ~/.local/opt/syd-3.59.0/syd`, in a plain
    terminal (see *Limits*)
 
 ## Engine contract as verified

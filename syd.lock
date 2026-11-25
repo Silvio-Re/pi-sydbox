@@ -14,7 +14,11 @@
   "engine": {
     "path": "/home/silvio/.local/opt/syd-3.59.0/syd",
     "version": "3.59.0",
-    "why": "the engine to use on this 6.8 kernel (landlock ABI 4): sourceBuild below, not the 3.60.0 release artifact"
+    "why": "the engine to use on this 6.8 kernel (landlock ABI 4): sourceBuild below, not the 3.60.0 release artifact",
+    "binary": {
+      "sha256": "db994415c0cc85710193ded9eae4b16a335ce2398abc50eab537b2d2970c780d",
+      "note": "same binary as sourceBuild.installedPath; recorded here so the gate hash-checks the lock's engine.path too, not only the source-build path (external review 2, M3)"
+    }
   },
   "sourceBuild": {
     "version": "3.59.0",
@@ -45,7 +49,7 @@
     }
   },
   "notes": [
-    "Verified 2026-06-04 against agent_dir/dist/syd-3.60.0-x86_64-pc-linux-gnu.tar.xz: sha512 matches, and the minisign signature by key b1e47bc29cc65132 (algorithm Ed, pure ed25519 over the file) is valid. agent_dir/spike/minisign_verify.py performs the check; the sig file carries no signed trusted comment. Trust anchor: the key was fetched over TLS from the upstream repository named in the signature comment.",
+    "Verified 2026-11-23 against agent_dir/dist/syd-3.60.0-x86_64-pc-linux-gnu.tar.xz: sha512 matches, and the minisign signature by key b1e47bc29cc65132 (algorithm Ed, pure ed25519 over the file) is valid. tools/minisign-verify.py performs the check (agent_dir/spike/minisign_verify.py is the working twin); the sig file carries no signed trusted comment. Trust anchor: tools/syd-release.pub, fetched over TLS from the upstream repository named in the signature comment.",
     "The .sig is minisign, not OpenPGP: the PGP key 0x25F201EDF60FF478 at distfiles /sydbox/syd.asc is not the signer, and gpg --verify reports 'no valid OpenPGP data' however that key is imported.",
     "Engine startup blocker: ChangeLog 3.60.0 states the new quiet/lock and log/lock rules need landlock ABI 10 (Linux>=7.2) and that Syd fails at startup on older kernels regardless of default/lock. This guest is 6.8.0-151-generic with landlock ABI 4, where every `syd -P profile -- cmd` exits EPERM with an empty log fd, including cat on an allowed path; `syd --check` still exits 0 because it only inspects the host.",
     "A sha512 sidecar served by the same host proves transport only; GPG verification is required.",

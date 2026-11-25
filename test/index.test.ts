@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -159,6 +160,67 @@ test("C5: a machine lock naming a missing engine refuses instead of scanning to 
 });
 
 type Handler = (event: unknown, ctx?: unknown) => unknown;
+
+test("M3: an engine outside the machine pin is refused, and a recorded engine is hash-checked", async () => {
+  // Variant A: the resolved engine is a binary the lock never recorded.
+  await wiring(async (dir, handlers) => {
+    const pinned = join(dir, "pinned", "syd");
+    mkdirSync(join(dir, "pinned"), { recursive: true });
+    writeFileSync(pinned, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const lock = join(dir, "syd.lock");
+    writeFileSync(lock, JSON.stringify({ engine: { path: pinned } }));
+    const savedLock = process.env.PI_SYDBOX_LOCK;
+    process.env.PI_SYDBOX_LOCK = lock;
+    try {
+      const ui = new UiProbe("Deny");
+      const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+      const verdict = (await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx)) as { block?: boolean; reason?: string };
+      assert.equal(verdict.block, true, "an unrecorded engine is refused before it can run anything");
+      assert.match(verdict.reason ?? "", /not one the machine pin records/, "the refusal names the pin and its recorded paths");
+    } finally {
+      if (savedLock === undefined) delete process.env.PI_SYDBOX_LOCK;
+      else process.env.PI_SYDBOX_LOCK = savedLock;
+    }
+  });
+
+  // Variant B: the engine IS the lock's path, but the binary no longer matches.
+  await wiring(async (dir, handlers) => {
+    const engine = join(dir, "syd"); // the engine wiring resolved
+    const lock = join(dir, "syd.lock");
+    writeFileSync(lock, JSON.stringify({ engine: { path: engine, binary: { sha256: "00".repeat(32) } } }));
+    const savedLock = process.env.PI_SYDBOX_LOCK;
+    process.env.PI_SYDBOX_LOCK = lock;
+    try {
+      const ui = new UiProbe("Deny");
+      const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+      const verdict = (await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx)) as { block?: boolean; reason?: string };
+      assert.equal(verdict.block, true, "a swapped binary under a recorded name is refused");
+      assert.match(verdict.reason ?? "", /engine binary hash mismatch/, "the refusal says the hash, not the path, failed");
+    } finally {
+      if (savedLock === undefined) delete process.env.PI_SYDBOX_LOCK;
+      else process.env.PI_SYDBOX_LOCK = savedLock;
+    }
+  });
+
+  // Variant C: recorded path, matching hash — the session runs.
+  await wiring(async (dir, handlers) => {
+    const engine = join(dir, "syd");
+    const sha = createHash("sha256").update(readFileSync(engine)).digest("hex");
+    const lock = join(dir, "syd.lock");
+    writeFileSync(lock, JSON.stringify({ engine: { path: engine, binary: { sha256: sha } } }));
+    const savedLock = process.env.PI_SYDBOX_LOCK;
+    process.env.PI_SYDBOX_LOCK = lock;
+    try {
+      const ui = new UiProbe("Deny");
+      const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+      const verdict = await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+      assert.equal(verdict, undefined, "a hash-matching pin lets the sandbox start");
+    } finally {
+      if (savedLock === undefined) delete process.env.PI_SYDBOX_LOCK;
+      else process.env.PI_SYDBOX_LOCK = savedLock;
+    }
+  });
+});
 
 function fakePi() {
   const handlers = new Map<string, Handler>();
@@ -365,17 +427,74 @@ test("an allow-once grant feeds exactly one spawn and can prompt again (C2)", as
   });
 });
 
+test("a once-grant fed to a `!` command lapses with that command (M1)", async () => {
+  await wiring(async (dir, handlers) => {
+    const ui = new UiProbe("Allow once");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    // Establish a state and seed a once-grant through the normal dialog path.
+    const first = { command: "echo hi" };
+    await handlers.get("tool_call")?.({ toolName: "bash", input: first }, ctx);
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    const line = JSON.stringify({ ctx: "pid:1", cap: "read", act: "deny", sys: "openat", path: "/work/once.txt" });
+    writeFileSync(layout.logPath, `${line}\n`);
+    await handlers.get("tool_result")?.({}, ctx);
+    const profilePath = /'([^']+\.syd-3)'/.exec(String(first.command))?.[1];
+    assert.ok(profilePath, "sanity: wrapped with a profile path");
+    assert.match(readFileSync(profilePath!, "utf8"), /once\.txt/, "the once-grant is compiled for the next spawn");
+
+    // A `!` command takes the user_bash path: its spawn consumes the grant.
+    // On hosts where the pi package is resolvable this asserts the real
+    // invariant; where it is not, pi refuses the `!` itself and there is
+    // nothing more to check — the extension never runs a second spawn on
+    // the stale grant either way.
+    const verdict = (await handlers.get("user_bash")?.({ command: "echo mapped" }, ctx)) as
+      | { operations?: { exec?: (cmd: string, cwd: string) => Promise<unknown> } }
+      | undefined;
+    const exec = verdict?.operations?.exec;
+    if (typeof exec === "function") {
+      await exec("echo mapped", dir);
+      const second = { command: "echo there" };
+      await handlers.get("tool_call")?.({ toolName: "bash", input: second }, ctx);
+      assert.doesNotMatch(readFileSync(profilePath!, "utf8"), /once\.txt/, "the `!` spawn consumed the once-grant");
+    } else {
+      assert.equal((verdict as { result?: { exitCode?: number } })?.result?.exitCode, 126, "without operations pi must refuse, not fall through");
+    }
+  });
+});
+
+test("a corrupt grant store is reported, and everything still runs fail-closed (M2)", async () => {
+  await wiring(async (dir, handlers) => {
+    const layout = stateLayout(dir);
+    mkdirSync(layout.stateDir, { recursive: true });
+    // A pre-existing, unparseable grants.json: the exact crash-truncation case.
+    writeFileSync(layout.projectGrants, '{"rules": ["truncated');
+
+    const ui = new UiProbe("Allow for this session");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+    const decision = await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+    assert.equal(decision, undefined, "a corrupt store fails closed but never doesn't block the session");
+    assert.match(
+      ui.notes.join("|"),
+      /grant store .*cannot be read.*ARE NOT in effect/,
+      "the operator is told the stored grants were dropped"
+    );
+  });
+});
+
 test("a sandbox.json deny is reported as a policy deny, not offered as a grant (S3)", async () => {
   await wiring(async (dir, handlers) => {
-    // The policy is read once at first state creation: it must exist before
+    // The policy is read once at first state creation, from the state dir —
+    // never from inside the confined tree (H1): it must exist before
     // the first call.
-    writeFileSync(join(dir, "sandbox.json"), JSON.stringify({ filesystem: { denyWrite: ["/work/locked-area"] } }));
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    writeFileSync(join(layout.stateDir, "policy.json"), JSON.stringify({ filesystem: { denyWrite: ["/work/locked-area"] } }));
     const ui = new UiProbe("Allow for this session");
     const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
 
     await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
-    const layout = stateLayout(dir);
-    mkdirSync(dirname(layout.logPath), { recursive: true });
     const line = JSON.stringify({ ctx: "pid:1", cap: "create", act: "deny", sys: "mknod", path: "/work/locked-area/new.txt" });
     writeFileSync(layout.logPath, `${line}\n`);
 
@@ -383,6 +502,65 @@ test("a sandbox.json deny is reported as a policy deny, not offered as a grant (
     assert.equal(ui.selectCalls.length, 0, "a policy deny must never reach the grant tiers");
     assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\)/, "the dialog says where the deny comes from");
     assert.equal(existsSync(layout.projectGrants), false, "no dead grant is persisted");
+  });
+});
+
+// H1 (external review 2): the policy must come from outside the confined tree.
+test("a workspace sandbox.json is refused with the adoption command, never loaded", async () => {
+  await wiring(async (dir, handlers) => {
+    writeFileSync(join(dir, "sandbox.json"), JSON.stringify({ enabled: false }));
+    const ui = new UiProbe("Allow for this session");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    const decision = await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx) as { block?: boolean; reason?: string };
+    assert.equal(decision?.block, true, "bash is blocked instead of running the tree's own policy");
+    const layout = stateLayout(dir);
+    assert.match(decision?.reason ?? "", new RegExp(`cp .*sandbox\\.json ${join(layout.stateDir, "policy.json")}`), "the refusal names the exact adoption command");
+
+    // A relative deny root must still catch a relative record path (M4 sits in
+    // the same loop; proven together here at the wiring level).
+  });
+});
+
+test("a workspace agent_dir/sandbox.json is refused too, and the state policy wins when both exist", async () => {
+  await wiring(async (dir, handlers) => {
+    const layout = stateLayout(dir);
+    mkdirSync(join(dir, "agent_dir"), { recursive: true });
+    writeFileSync(join(dir, "agent_dir", "sandbox.json"), JSON.stringify({ enabled: false, filesystem: { allowWrite: ["/"] } }));
+    mkdirSync(layout.stateDir, { recursive: true });
+    writeFileSync(join(layout.stateDir, "policy.json"), JSON.stringify({ filesystem: { denyWrite: ["/work/deep-secret"] } }));
+    const ui = new UiProbe("Deny");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    const decision = await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx) as undefined | { block?: boolean };
+    assert.equal(decision, undefined, "the approved state policy runs the sandbox");
+
+    const line = JSON.stringify({ ctx: "pid:1", cap: "write", act: "deny", sys: "openat", path: "/work/deep-secret/a.txt" });
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    writeFileSync(layout.logPath, `${line}\n`);
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.equal(ui.selectCalls.length, 0, "the workspace file's allowWrite:/ was never read");
+    assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\) on \/work\/deep-secret/);
+  });
+});
+
+test("a relative record path inside a deny root is a policy deny, not a grant prompt (M4)", async () => {
+  await wiring(async (dir, handlers) => {
+    const layout = stateLayout(dir);
+    mkdirSync(layout.stateDir, { recursive: true });
+    writeFileSync(join(layout.stateDir, "policy.json"), JSON.stringify({ filesystem: { denyWriteAlways: [join(dir, "locked")] } }));
+    const ui = new UiProbe("Allow for this session");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    const line = JSON.stringify({ ctx: "pid:1", cap: "write", act: "deny", sys: "openat", path: "locked/a.txt" });
+    writeFileSync(layout.logPath, `${line}\n`);
+
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.equal(ui.selectCalls.length, 0, "the relative path resolves into the deny root before the grant offer");
+    assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\) on .*locked\/a\.txt/, "the notice names the resolved path");
+    assert.equal(existsSync(layout.projectGrants), false, "no dead grant for a policy-denied target");
   });
 });
 

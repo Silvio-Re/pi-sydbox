@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { recordToGrant } from "../src/mapper.ts";
 import { compileProfile, netRule } from "../src/compiler.ts";
+import { parseLog } from "../src/records.ts";
 import type { AnyRecord } from "../src/records.ts";
 
 const base = { cap: "read", act: "deny" as const, sys: "open" };
@@ -97,4 +99,53 @@ test("one netRule table for policy and records: compiler output is exact per sha
     const profile = compileProfile({ network: { allow: [entry] } }, "A");
     assert.ok(profile.includes(`\n${want}\n`), `${entry} -> ${want}\n${profile}`);
   }
+});
+
+// External review 2, H2: unknown-to-the-table caps previously produced a null
+// grant — unpromptable, silently — for denial shapes the engine demonstrably
+// emits. Every rule below must match the engine's own tip spelling.
+test("mkdir and rmdir denials map onto their tip's singular rule", () => {
+  // Captured: tip "configure `allow/mkdir+/tmp/.../targetdir/new'".
+  const mkdir = recordToGrant({ ...base, cap: "mkdir", sys: "mkdir", kind: "path", path: "/tmp/agent/targetdir/new" }, "/work");
+  assert.equal(mkdir?.rule, "allow/mkdir+/tmp/agent/targetdir/new");
+  const rmdir = recordToGrant({ ...base, cap: "rmdir", sys: "rmdir", kind: "path", path: "/tmp/agent/targetdir" }, "/work");
+  assert.equal(rmdir?.rule, "allow/rmdir+/tmp/agent/targetdir");
+});
+
+test("an ioctl denial maps onto its ctl group rule, tip-faithful", () => {
+  // Captured: tip "configure `allow/ioctl+TCGETS'".
+  const grant = recordToGrant({ ...base, cap: "ioctl", sys: "ioctl", kind: "ctl", ctl: ["TCGETS"] }, "/work");
+  assert.equal(grant?.rule, "allow/ioctl+TCGETS");
+});
+
+test("a compound cap maps onto the union of its categories; an unknown component still nulls", () => {
+  // Captured: "cap":["read","write"] on /dev/tty (type chr), tip `allow/read,write+…`.
+  const grant = recordToGrant({ ...base, cap: "read,write", sys: "openat", kind: "path", path: "/dev/tty", type: "chr" }, "/work");
+  assert.equal(grant?.rule, "allow/lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr+/dev/tty\nallow/lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr+/dev/tty/***");
+  const unknown = recordToGrant({ ...base, cap: "read,banana", sys: "openat", kind: "path", path: "/dev/tty" }, "/work");
+  assert.equal(unknown, null, "an unknown cap component keeps the record denied");
+});
+
+test("the captured net-deny fixture maps every record to a grantable rule (H2)", () => {
+  const text = readFileSync(new URL("./fixtures/capture/net-deny-3.59.0.jsonl", import.meta.url), "utf8");
+  const { records } = parseLog(text);
+  const grants = records.map((r) => recordToGrant(r, "/work"));
+  assert.ok(grants.every((g) => g !== null), "no captured denial may be unmappable");
+  assert.equal(grants[1]?.rule, "allow/ioctl+TCGETS");
+  assert.equal(grants[4]?.rule, "allow/net/connect+tcp!127.0.0.1!59999");
+});
+
+test("the captured mkdir/rmdir fixture maps tip-faithful too (H2)", () => {
+  const text = readFileSync(new URL("./fixtures/capture/denies-3.59.0.jsonl", import.meta.url), "utf8");
+  const { records } = parseLog(text);
+  const mkdirRec = records.find((r) => r.cap === "mkdir");
+  const rmdirRec = records.find((r) => r.cap === "rmdir");
+  if (mkdirRec === undefined || rmdirRec === undefined || mkdirRec.kind !== "path" || rmdirRec.kind !== "path") {
+    assert.fail("expected mkdir and rmdir path records");
+    return;
+  }
+  const mkdirGrant = recordToGrant(mkdirRec, "/work");
+  const rmdirGrant = recordToGrant(rmdirRec, "/work");
+  assert.equal(mkdirGrant?.rule, "allow/mkdir+/tmp/sydbox-probe-21.jaNe5H/targetdir/new");
+  assert.equal(rmdirGrant?.rule, "allow/rmdir+/tmp/sydbox-probe-21.jaNe5H/targetdir");
 });

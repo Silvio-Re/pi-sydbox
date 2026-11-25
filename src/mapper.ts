@@ -20,7 +20,10 @@ export interface Grant {
 /** Engine caps (the `cap` field) mapped onto the category lists. readdir and
  * fattr are engine caps with their own rule cats; without these rows a denial
  * raised through them produced a null grant — unpromptable, unfixable at
- * runtime (external-review C4). */
+ * runtime (external-review C4). `mkdir` and `rmdir` are mapped to themselves,
+ * NOT to WRITE_CATS: the engine's own tip prints `allow/mkdir+…` / `allow/rmdir+…`
+ * (fixtures/capture), and the table's rule is tip-faithful — mapping them onto
+ * a broader category union would be a guess the tip never named. */
 const CAP_CATS: Readonly<Record<string, string>> = Object.freeze({
   read: READ_CATS,
   stat: READ_CATS,
@@ -32,6 +35,8 @@ const CAP_CATS: Readonly<Record<string, string>> = Object.freeze({
   append: WRITE_CATS,
   fattr: WRITE_CATS,
   exec: EXEC_CATS,
+  mkdir: "mkdir",
+  rmdir: "rmdir",
 });
 
 /** Actions that mean "the engine refused"; anything else needs no grant. */
@@ -72,9 +77,34 @@ export function recordToGrant(record: AnyRecord, root: string): Grant | null {
     return { tier: "once", rule };
   }
 
+  if (record.kind === "ctl") {
+    // Tip-faithful: the engine itself prints `allow/ioctl+TCGETS` for these
+    // (fixtures/capture); TCGETS is a tty ioctl group, not a path.
+    return { tier: "once", rule: `allow/ioctl+${record.ctl.join(",")}` };
+  }
+
   const path = record.path;
   if (path === undefined || path.length === 0) return null;
-  const cats = CAP_CATS[record.cap];
+  // A compound cap ("read,write" — the engine joins an array cap with commas)
+  // maps to the deduplicated union of its components' categories; an unknown
+  // component means the record stays denied (null), as for a single unknown cap.
+  let cats: string | undefined;
+  for (const cap of record.cap.split(",")) {
+    const current = CAP_CATS[cap];
+    if (current === undefined) {
+      cats = undefined;
+      break;
+    }
+    if (cats === undefined) {
+      cats = current;
+      continue;
+    }
+    const seen = cats.split(",");
+    for (const cat of current.split(",")) {
+      if (!seen.includes(cat)) seen.push(cat);
+    }
+    cats = seen.join(",");
+  }
   if (cats === undefined) return null;
 
   // Relative paths are logged against the process cwd; resolving against the
@@ -82,6 +112,12 @@ export function recordToGrant(record: AnyRecord, root: string): Grant | null {
   const absolute = normalizePath(path.startsWith("/") ? path : `${root.replace(/\/+$/, "")}/${path}`);
   const base = absolute.replace(/\/\*+$/, "");
   const ruleFor = (target: string) => `allow/${cats}+${target}`;
+  // mkdir/rmdir carry no `type` in captures and their tips print the singular
+  // path form only (`allow/mkdir+…`, `allow/rmdir+…`): the dual-spelling
+  // branch below would invent a subtree variant the tip never named.
+  if (record.cap === "mkdir" || record.cap === "rmdir") {
+    return { tier: "once", rule: ruleFor(base) };
+  }
   // A path needs both spellings; neither covers both kinds (environment.md,
   // profile-files section). The record's `type` names the kind when present,
   // and a record path that is itself a glob names the subtree. When the kind

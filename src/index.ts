@@ -55,6 +55,8 @@ export interface PiApi {
 export const LOG_NAME = "syd.log";
 export const PROFILE_DIR = "profiles";
 export const GRANTS_NAME = "grants.json";
+/** The per-project approved policy, under the state dir — never inside the tree. */
+export const POLICY_NAME = "policy.json";
 
 /** Where a machine pin lives: a copy of the repo's syd.lock (machine-setup step). */
 export function lockFile(env: NodeJS.ProcessEnv = process.env): string {
@@ -230,10 +232,17 @@ export function describeDenial(record: { cap: string; sys: string; path?: string
  * content (a UTF-8 filename inside a record) makes byte and index disagree —
  * the first slice would start mid-record, lose that record forever, and
  * skew every later slice (external-review C1).
+ *
+ * The seed stops at the last COMPLETE line, not the file end: a session that
+ * crashed mid-write leaves a partial record at the tail, and seeding past its
+ * start would mark those bytes as consumed — the record would be completed by
+ * the engine later and never parsed (external review 2). Seeding after the
+ * last newline puts the tail in the unread zone: once completed, it parses.
  */
 export function initialLogOffset(logPath: string): number {
   try {
-    return readFileSync(logPath, "utf8").length;
+    const text = readFileSync(logPath, "utf8");
+    return text.lastIndexOf("\n") + 1;
   } catch {
     return 0;
   }
@@ -316,8 +325,10 @@ export default function activate(pi: PiApi): void {
     try {
       return rulesFor(readGrants(file), tier);
     } catch {
-      // A corrupt store must not stop the sandbox from starting; denies still
-      // hold. The dialog layer reports the store when a grant is attempted.
+      // A corrupt store must not stop the sandbox from starting: readGrants
+      // fails below in ensureState, which notifies the operator once per
+      // session — this is only the compile-time fallback, not the place to
+      // nag on every spawn (external-review M2).
       return [];
     }
   };
@@ -385,7 +396,20 @@ export default function activate(pi: PiApi): void {
     if (state !== null) return state;
     const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd();
     const layout = stateLayout(cwd);
-    const policy = loadPolicy(cwd);
+    const policy = loadPolicy(cwd, layout);
+    // Corrupt grant stores were previously swallowed here (empty rule list,
+    // no message): the operator saw grants vanish with no trace. Read once
+    // per session and report the failure — the fail-closed behavior stays,
+    // the silence goes (external-review M2).
+    const ui = uiPort(ctx);
+    for (const store of [layout.projectGrants, layout.globalGrants]) {
+      if (!existsSync(store)) continue;
+      try {
+        readGrants(store);
+      } catch (err) {
+        ui.notify?.(`pi-sydbox: grant store ${store} cannot be read (${(err as Error).message}); its grants ARE NOT in effect — restore or delete the file`);
+      }
+    }
     const allowPaths = [...(policy.filesystem?.allowRead ?? []), ...(policy.filesystem?.allowWrite ?? [])];
     const fsAllows = fsAllowFor(allowPaths);
     importLegacyGrants(layout, cwd);
@@ -416,9 +440,13 @@ export default function activate(pi: PiApi): void {
 
   /**
    * Once per session: the engine must pass its own self-check, and when a
-   * machine lock names this exact engine, the binary must hash to what the
-   * lock recorded. A swapped binary under a known name is the classic way to
-   * inherit a validation one never earned.
+   * machine lock records an engine, the binary that runs here must be one the
+   * lock named and hash to what the lock recorded. A swapped binary under a
+   * known name is the classic way to inherit a validation one never earned.
+   * The lock's two recorded paths (source-build and release) are the only
+   * engines this session may run: an env override to some other binary —
+   * exactly like the scan in resolveEngine — is refused rather than trusted
+   * (external-review M3, same stance as C5).
    */
   const gateEngine = (st: SessionState, engine: string, env: NodeJS.ProcessEnv = process.env): string | null => {
     if (st.engineGated) return null;
@@ -426,18 +454,28 @@ export default function activate(pi: PiApi): void {
     const argv = buildSelfCheck(engine);
     const check = spawnSync(argv[0] ?? engine, argv.slice(1), { encoding: "utf8" });
     if (check.status !== 0) return `engine self-check failed (rc=${check.status ?? "signal"})`;
-    let want: string | undefined;
+    let lock: {
+      engine?: { path?: string; binary?: { sha256?: string } };
+      sourceBuild?: { installedPath?: string; binary?: { sha256?: string } };
+    };
     try {
-      want = (JSON.parse(readFileSync(lockFile(env), "utf8")) as { sourceBuild?: { installedPath?: string; binary?: { sha256?: string } } })
-        .sourceBuild?.binary?.sha256;
-      const recorded = (JSON.parse(readFileSync(lockFile(env), "utf8")) as { sourceBuild?: { installedPath?: string } })
-        .sourceBuild?.installedPath;
-      if (recorded !== engine || want === undefined) return null;
+      lock = JSON.parse(readFileSync(lockFile(env), "utf8"));
     } catch {
-      return null; // lock unreadable here: the scan above already found something runnable
+      return null; // no machine pin on this host: the self-check above is the gate
     }
+    const pinned: Array<{ path?: string; sha256?: string }> = [
+      { path: lock.sourceBuild?.installedPath, sha256: lock.sourceBuild?.binary?.sha256 },
+      { path: lock.engine?.path, sha256: lock.engine?.binary?.sha256 },
+    ];
+    const named = pinned.filter((entry): entry is { path: string; sha256?: string } => typeof entry.path === "string");
+    const match = named.find((entry) => entry.path === engine);
+    if (match === undefined) {
+      const names = named.map((entry) => entry.path);
+      return `engine ${engine} is not one the machine pin records (${names.join(", ") || "none"}) — refusing an unvalidated engine`;
+    }
+    if (typeof match.sha256 !== "string") return null; // pinned by path only: the path IS the pin
     const got = createHash("sha256").update(readFileSync(engine)).digest("hex");
-    if (got !== want) return `engine binary hash mismatch: ${engine}`;
+    if (got !== match.sha256) return `engine binary hash mismatch: ${engine}`;
     return null;
   };
 
@@ -549,8 +587,16 @@ export default function activate(pi: PiApi): void {
       }
       if (grant === null) continue;
       const target = "path" in record ? record.path : "addr" in record ? record.addr : "";
-      if (target !== undefined && target !== "" && policyDenied(target)) {
-        ui.notify?.(`pi-sydbox: policy deny (sandbox.json) on ${target}: no grant can lift it — edit sandbox.json`);
+      // Relative record paths are logged against the process cwd; the grant
+      // mapper resolves them against the project root, and this guard must do
+      // the same — a relative path inside a deny root would otherwise slip the
+      // policy-deny check and be offered as a liftable grant (external-review M4).
+      const resolvedTarget =
+        target === undefined || target === "" || target.startsWith("/")
+          ? target
+          : normalizePath(`${root.replace(/\/+$/, "")}/${target}`);
+      if (resolvedTarget !== undefined && resolvedTarget !== "" && policyDenied(resolvedTarget)) {
+        ui.notify?.(`pi-sydbox: policy deny (sandbox.json) on ${resolvedTarget}: no grant can lift it — edit sandbox.json`);
         continue; // do not prompt, do not seed the dedupe with a dead rule
       }
       // Already granted (or repeated in this batch): no second prompt for the
@@ -607,16 +653,19 @@ export default function activate(pi: PiApi): void {
         operations: {
           exec: (command: string, cwd: string, options: unknown) => {
             const profile = rebuildProfile(current);
-            const result = local.exec(
-              wrapCommand(command, {
-                sydPath: engine,
-                profilePath: current.profilePath,
-                logPath: current.logPath,
-                profile,
-              }),
-              cwd,
-              options,
-            );
+            const wrapped = wrapCommand(command, {
+              sydPath: engine,
+              profilePath: current.profilePath,
+              logPath: current.logPath,
+              profile,
+            });
+            // The once-grants are compiled into the profile file this child
+            // reads, so their mandate ends with the launch — same invariant as
+            // the tool_call handler. Without this clear, a single "allow
+            // once" survived into every later `!` command and spawn until a
+            // bash tool call happened to clear it (external-review M1).
+            current.onceGrants.clear();
+            const result = local.exec(wrapped, cwd, options);
             // A `!` command has no async result hook, so a dialog cannot be
             // awaited here. Count the new denials without consuming them: the
             // next tool result offers them. Silence would hide them entirely.
@@ -643,13 +692,36 @@ export default function activate(pi: PiApi): void {
   void pi.registerTool;
 }
 
-function loadPolicy(cwd: string): SandboxPolicy {
-  for (const candidate of [join(cwd, "sandbox.json"), join(cwd, "agent_dir", "sandbox.json")]) {    if (!existsSync(candidate)) continue;
+function loadPolicy(cwd: string, layout: StateLayout): SandboxPolicy {
+  // H1 (external review 2): a policy read from inside the confined tree
+  // disables or widens the sandbox it is supposed to constrain — a fresh
+  // clone of any repo could ship `{"enabled": false}` or grant itself the
+  // whole disk, silently, before the first prompt is ever shown. The approved
+  // policy lives OUTSIDE the workspace, under the per-project state dir; the
+  // explicit copy is the operator's approval act, same stance as the legacy
+  // grant import (S2). PI_SYDBOX_POLICY is the test/dev override.
+  const explicit = process.env.PI_SYDBOX_POLICY;
+  if (explicit !== undefined && explicit !== "") {
     try {
-      return JSON.parse(readFileSync(candidate, "utf8")) as SandboxPolicy;
+      return JSON.parse(readFileSync(explicit, "utf8")) as SandboxPolicy;
     } catch (err) {
-      throw new LaunchError(`${candidate}: ${(err as Error).message}`);
+      throw new LaunchError(`${explicit}: ${(err as Error).message}`);
     }
+  }
+  const approved = join(layout.stateDir, POLICY_NAME);
+  if (existsSync(approved)) {
+    try {
+      return JSON.parse(readFileSync(approved, "utf8")) as SandboxPolicy;
+    } catch (err) {
+      throw new LaunchError(`${approved}: ${(err as Error).message}`);
+    }
+  }
+  const present = [join(cwd, "sandbox.json"), join(cwd, "agent_dir", "sandbox.json")]
+    .filter((candidate) => existsSync(candidate));
+  if (present.length > 0) {
+    throw new LaunchError(
+      `workspace ${present.map((file) => file.slice(cwd.length + 1)).join(" or ")} is never loaded from inside the confined tree (H1) — review it, then adopt it once: mkdir -p ${layout.stateDir} && cp ${present[0]} ${approved}`,
+    );
   }
   return {};
 }

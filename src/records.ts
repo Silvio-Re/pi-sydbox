@@ -34,11 +34,9 @@ const ACTS: ReadonlySet<string> = new Set<Act>([
   "exit",
 ]);
 
-/**
- * Fields documented for the syd versions this parser was written against.
- * Documentation-derived, unverified against a captured log. Bump the version
- * and the list together, never one alone.
- */
+/** Fields documented for the syd versions this parser was written against.
+ * Verified against captured engine logs
+ * (test/fixtures/capture/*.jsonl); `ctl` was added from those captures. */
 export const KNOWN_FIELDS_VERSION = "syd 3.59.0 (captured)" as const;
 
 export const KNOWN_FIELDS = [
@@ -67,12 +65,17 @@ export const KNOWN_FIELDS = [
   "hid",
   "syd",
   "tty",
+  "ctl",
 ] as const;
 
 export type KnownField = (typeof KNOWN_FIELDS)[number];
 
-/** Fields every access record must carry, as non-empty trimmed strings. */
-export const REQUIRED_FIELDS = ["act", "cap", "sys"] as const;
+/** Fields every access record must carry: a non-empty trimmed string.
+ * `cap` additionally accepts an array — a captured 3.59.0 denial carries
+ * `"cap":["read","write"]` with tip `allow/read,write+…`, the compound
+ * engine spelling (fixtures/capture) — so `cap` is validated by `parseCap`,
+ * not by this list. */
+export const REQUIRED_FIELDS = ["act", "sys"] as const;
 
 /** Parser options. `strict` turns an unknown field back into drift by default. */
 interface ParseOptions {
@@ -127,7 +130,14 @@ export interface NetRecord extends SydRecord {
   unix?: string;
 }
 
-export type AnyRecord = PathRecord | NetRecord;
+/** A device/state denial with no path target: ioctl group names in `ctl`
+ * (captured 3.59.0: `"cap":"ioctl","ctl":["TCGETS"]`, tip `allow/ioctl+TCGETS`). */
+export interface CtlRecord extends SydRecord {
+  kind: "ctl";
+  ctl: string[];
+}
+
+export type AnyRecord = PathRecord | NetRecord | CtlRecord;
 
 function asObject(raw: unknown): Record<string, unknown> {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -189,6 +199,56 @@ function optionalIpv(obj: Record<string, unknown>): 4 | 6 | undefined {
   throw new SchemaDriftError(`field ipv is not 4 or 6 (schema drift, upgrade blocked)`);
 }
 
+/** A valid `cap`: the single spelling, or the comma-joined compound of a
+ * non-empty array (deduplicated, order kept) — exactly the engine's own
+ * `read,write` spelling from its tip, so the mapper can split it back. */
+function parseCap(value: unknown): string {
+  const single = (v: unknown): string | null => {
+    if (typeof v !== "string" || v.trim() === "") return null;
+    return v.trim();
+  };
+  const one = single(value);
+  if (one !== null) return one;
+  if (Array.isArray(value)) {
+    const caps: string[] = [];
+    for (const entry of value) {
+      const cap = single(entry);
+      if (cap === null) {
+        throw new SchemaDriftError("cap array holds an empty or non-string entry (schema drift, upgrade blocked)");
+      }
+      if (!caps.includes(cap)) caps.push(cap);
+    }
+    if (caps.length === 0) throw new SchemaDriftError("cap array is empty (schema drift, upgrade blocked)");
+    return caps.join(",");
+  }
+  throw new SchemaDriftError("field cap is neither string nor string array (schema drift, upgrade blocked)");
+}
+
+/** A valid `ctl`: one name or an array of them, always returned as an array. */
+function parseCtl(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  const single = (v: unknown): string | null => {
+    if (typeof v !== "string" || v.trim() === "") return null;
+    return v.trim();
+  };
+  const names: string[] = [];
+  if (single(value) !== null) {
+    names.push(single(value) as string);
+  } else if (Array.isArray(value)) {
+    for (const entry of value) {
+      const name = single(entry);
+      if (name === null) {
+        throw new SchemaDriftError("ctl array holds an empty or non-string entry (schema drift, upgrade blocked)");
+      }
+      if (!names.includes(name)) names.push(name);
+    }
+    if (names.length === 0) throw new SchemaDriftError("ctl array is empty (schema drift, upgrade blocked)");
+  } else {
+    throw new SchemaDriftError("field ctl is neither string nor string array (schema drift, upgrade blocked)");
+  }
+  return names;
+}
+
 /**
  * Parse one decoded log line. A record with a valid act is an access record;
  * it must carry act, cap and sys and one of path or addr/unix.
@@ -211,9 +271,11 @@ export function parseRecord(raw: unknown, options: ParseOptions = {}): AnyRecord
     throw new SchemaDriftError(`missing or non-string field(s): ${missing.join(", ")}`);
   }
 
+  const cap = parseCap(obj.cap);
+
   const record: SydRecord = {
     act: normalizeAct(obj.act as string),
-    cap: (obj.cap as string).trim(),
+    cap,
     sys: (obj.sys as string).trim(),
   };
 
@@ -245,6 +307,10 @@ export function parseRecord(raw: unknown, options: ParseOptions = {}): AnyRecord
   if (ipv !== undefined) record.ipv = ipv;
   const abs = optionalBoolean(obj, "abs");
   if (abs !== undefined) record.abs = abs;
+  // `type` ("reg"/"dir"/"chr"…) was declared on the interface but never copied
+  // before, so every mapper branch keyed on it was reading undefined.
+  const type = optionalString(obj, "type");
+  if (type !== undefined) record.type = type;
   if (present(obj, "args")) record.args = obj["args"];
   if (unknownKeys.length > 0) {
     const extra: Record<string, unknown> = {};
@@ -261,7 +327,14 @@ export function parseRecord(raw: unknown, options: ParseOptions = {}): AnyRecord
   const unix = typeof obj.unix === "string" ? obj.unix : undefined;
   const hasAddr = addr !== undefined && addr.trim().length > 0;
   const hasUnix = unix !== undefined && unix.trim().length > 0;
+  const ctl = parseCtl(obj.ctl);
   if (!hasAddr && !hasUnix) {
+    // Not every denial names a path: ioctl group denials carry their group
+    // names in `ctl` and no target at all (captured) — they stay grantable
+    // through their own rule form instead of being lost as drift.
+    if (ctl !== undefined && record.cap === "ioctl") {
+      return { ...record, kind: "ctl", ctl };
+    }
     throw new SchemaDriftError(
       "access record carries neither path nor addr/unix (schema drift, upgrade blocked)",
     );

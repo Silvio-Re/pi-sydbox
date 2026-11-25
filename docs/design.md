@@ -30,6 +30,19 @@ hardened state, which syd does not need.
    outcome can weaken a deny. (A probe run treats the same drift as an
    abort — see "Abort conditions".)
 
+Policied-surface decisions, made deliberately (external review 2):
+
+- `allowWrite` on a tree also grants `exec` on that tree (compiler.ts): a
+  build workspace must be able to run what it builds, and `PROFILE_LINUX`
+  execs nothing under the tree on its own. TPE still refuses group-writable
+  files, so the widening is bounded by what the agent itself wrote.
+- The deny-sink log (`syd.log` in the state dir) has no rotation: it is
+  re-read from the session offset on every tool_result and grows without
+  bound. Acceptable for a per-project session log while sessions are
+  short; revisit before any long-lived always-on deployment.
+- `AUTO_DENY_MS = 120_000` is PROVISIONAL: the phase 0 RPC-timeout
+  measurement it should rest on was never taken.
+
 ## Environment (verified 2026-11-23)
 
 - Ubuntu 24.04.5, kernel 6.8.0-151-generic, Linux VM guest. Inert for syd: no

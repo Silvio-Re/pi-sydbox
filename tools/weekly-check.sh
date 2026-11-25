@@ -28,7 +28,19 @@ for p in pi-landstrip @landstrip/landstrip-api @landstrip/landstrip-linux-x64; d
   fi
 done
 
-pi_pkg="$HOME/.nvm/versions/node/v22.22.2/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/package.json"
+# The bundled pi package rides a node install whose path moved before (nvm
+# upgrades); resolve it from the running `pi` binary when possible and keep
+# the recorded absolute path as the fallback.
+pi_pkg=""
+if command -v pi >/dev/null 2>&1; then
+  pi_bin="$(readlink -f "$(command -v pi)")"
+  case "$pi_bin" in
+    */bin/pi) pi_pkg="${pi_bin%/bin/pi}/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/package.json" ;;
+  esac
+fi
+if [ -z "$pi_pkg" ] || [ ! -f "$pi_pkg" ]; then
+  pi_pkg="$HOME/.nvm/versions/node/v22.22.2/lib/node_modules/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/package.json"
+fi
 if [ -f "$pi_pkg" ]; then
   say OK "bundled pi $(python3 -c "import json;print(json.load(open('$pi_pkg'))['version'])")"
 else

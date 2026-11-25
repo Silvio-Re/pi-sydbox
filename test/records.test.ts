@@ -93,7 +93,7 @@ test("reports an unknown field as drift in strict mode", () => {
   assert.throws(
     () => parseRecord({ ...minimal, newkey: "x" }, { strict: true }),
     (err: unknown) => {
-      assert.ok(err instanceof SchemaDriftError);
+      if (!(err instanceof SchemaDriftError)) return false;
       assert.match(err.message, /newkey/);
       return true;
     },
@@ -111,7 +111,7 @@ test("rejects the same unknown field in strict mode", () => {
   assert.throws(
     () => parseRecord({ ...minimal, nsid: "syd-1" }, { strict: true }),
     (err: unknown) => {
-      assert.ok(err instanceof SchemaDriftError);
+      if (!(err instanceof SchemaDriftError)) return false;
       assert.match(err.message, /nsid/);
       assert.match(err.message, /schema drift, upgrade blocked/);
       return true;
@@ -176,4 +176,49 @@ test("parses the captured 3.59.0 access record in strict mode", () => {
   assert.deepEqual(record.args, [
     136037204963136, 136037205084192, 140734405496280, 18446744073709551615, 136037205084200, 136037204962256,
   ]);
+});
+
+// External review 2, H2: the captured fixtures must parse whole — array caps
+// and ctl-only records were previously counted as drift.
+test("every line of the captured net-deny fixture parses, array cap included", () => {
+  const text = readFileSync(new URL("./fixtures/capture/net-deny-3.59.0.jsonl", import.meta.url), "utf8");
+  const { records, skipped } = parseLog(text);
+  assert.equal(skipped, 0, `the capture must not produce drift (got ${skipped})`);
+  assert.equal(records.length, 6);
+  const tty = records[0];
+  if (tty === undefined || tty.kind !== "path") { assert.fail("the array-cap line must be a path record"); return; }
+  assert.equal(tty.cap, "read,write", "array cap joins with the engine's own comma spelling");
+  assert.equal(tty.type, "chr");
+  const ioctl = records[1];
+  if (ioctl === undefined || ioctl.kind !== "ctl") { assert.fail("the ioctl line must be a ctl record"); return; }
+  assert.deepEqual(ioctl.ctl, ["TCGETS"]);
+  assert.equal(ioctl.tip, "configure `allow/ioctl+TCGETS'");
+  const net = records[4];
+  if (net === undefined || net.kind !== "net") { assert.fail("line 5 must be a net record"); return; }
+  assert.equal(net.addr, "tcp!127.0.0.1!59999");
+});
+
+test("captured ioctl ctl arrays parse with a single name and stay deduplicated", () => {
+  const record = parseLine(
+    '{"cap":"ioctl","act":"deny","sys":"ioctl","ctl":["TCGETS","TCGETS"]}',
+  );
+  if (record.kind !== "ctl") { assert.fail("expected a ctl record"); return; }
+  assert.deepEqual(record.ctl, ["TCGETS"]);
+});
+
+test("an array cap with an empty entry is drift, not a silent accept", () => {
+  assert.throws(
+    () => parseLine('{"cap":["read",""],"act":"deny","sys":"openat","path":"/x"}'),
+    SchemaDriftError,
+  );
+});
+
+test("the captured mkdir/rmdir fixture parses; its notice is skipped, not drift", () => {
+  const text = readFileSync(new URL("./fixtures/capture/denies-3.59.0.jsonl", import.meta.url), "utf8");
+  const { records, skipped } = parseLog(text);
+  assert.equal(records.length, 5, "one line is the trusted_file_create notice");
+  assert.equal(skipped, 1, "the notice counts as skipped and never becomes a record");
+  const denyCaps = records.map((r) => r.cap);
+  assert.ok(denyCaps.includes("mkdir"));
+  assert.ok(denyCaps.includes("rmdir"));
 });
