@@ -49,7 +49,7 @@ jobs:
   corpus:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27997364c9af683 # v4.2.2
         with:
           persist-credentials: false
       - name: toolchain (engine source build prerequisites)
@@ -79,8 +79,15 @@ jobs:
           "$HOME/.local/opt/syd-$SYD_VERSION/syd" --version > "$RUNDIR/engine.txt"
           uname -r > "$RUNDIR/uname.txt"
           cp "$RUNNER_TEMP/step-engine.txt" "$RUNDIR/syd-build.txt"
-          make corpus LABEL=syd-runner PROFILE=corpus/profiles/syd-a.profile \
-               ENGINE='$HOME/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --' 2>&1 | tee "$RUNNER_TEMP/step-corpus.txt"
+          # Direct corpus/run.sh call, NOT `make corpus ENGINE=...`: make
+          # recursively expands a command-line value when the recipe
+          # references $(ENGINE), so $HOME arrives as "OME" and \$PROFILE_FILE
+          # as "\ROFILE_FILE" (evidence: run 45712504439). The shell here
+          # expands $HOME before corpus/run.sh receives the argument, and
+          # run.sh replaces the literal $PROFILE_FILE itself.
+          bash corpus/run.sh --label syd-runner \
+               --profile-template corpus/profiles/syd-a.profile \
+               --engine-cmd "$HOME/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --" 2>&1 | tee "$RUNNER_TEMP/step-corpus.txt"
       - name: gate (equal-or-stricter vs expectations/, plus the probe-record rules)
         run: |
           set -o pipefail
