@@ -127,11 +127,9 @@ green.
    any machine that is not the author's) with the repo's own scripts, run
    the whole corpus and the gate, commit the verdict tables labeled with
    the kernel band. Band evidence complements, never replaces, the
-   canonical 6.8 witness (M2, folded into M6). No CI workflow is required
-   for this: the 2026-11-25 capture from a GitHub runner (engine built
-   from the pinned scripts, kernel 7.0.0-1020-azure, 14/15 deny with one
-   case-shape error being fixed) is committed evidence; a plain-VM run
-   closes the band.
+   canonical 6.8 witness (M2, folded into M6). No CI workflow is involved
+   (CI policy above); an aborted runner experiment in P1 left no
+   committed evidence, and none is wanted.
 
 Gate P1: `make gate` green against the golden set; every bypass probe
 equal-or-stricter; both case-integrity rules enforced by the gate; no doc
