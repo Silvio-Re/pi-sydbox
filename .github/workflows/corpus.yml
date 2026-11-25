@@ -38,6 +38,12 @@ on:
 permissions:
   contents: write
 
+# Two triggers exist, so two runs can start at once; a race on the evidence
+# push loses one run's commit to a non-fast-forward. One at a time.
+concurrency:
+  group: corpus
+  cancel-in-progress: false
+
 env:
   # From syd.lock, unchanged: tag v3.59.0 is commit 7e602aaf... on
   # gitlab.exherbo.org/sydbox/sydbox.git, and the binary sha256 recorded in
