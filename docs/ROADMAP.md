@@ -280,7 +280,7 @@ Update status to `doing`, `blocked (reason)`, `done (evidence link)` or
 | order | env | depends on | status | evidence |
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
-| M1 golden + evidence handover | machine | none | done | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
+| M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
 | P1 provable claims | vm | M1 | todo | |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
