@@ -1,0 +1,3 @@
+sha512 ok: 3.60.0 (36ce5b03832166d7a0535fa8775f18c4225bcf6a03b5a2ded6fb79467789b6212d77d69a82a4951102be1a37ddfa1cb6148779a2d39111301343f817b4000641)
+signature not checked online-unavailable files: agent_dir/cache/syd-3.60.0-x86_64-pc-linux-gnu.tar.xz.sig agent_dir/cache/syd-release.pub
+WARNING: sha512-only verification (cache hit without a cached .sig or key); fetch the .sig and the key once to complete the pin

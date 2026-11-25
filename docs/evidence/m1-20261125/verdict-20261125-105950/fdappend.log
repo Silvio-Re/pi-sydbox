@@ -1,0 +1,7 @@
+CELL A shape=pi op=3>> records=1 verdict=<Permission denied>
+CELL B shape=pi op=3> records=1 verdict=<Permission denied>
+CELL C shape=outer op=3>> records=1 verdict=<Permission denied>
+CELL D shape=outer op=3> records=1 verdict=<Permission denied>
+COUNTS pi-append=1 pi-truncate=1 outer-append=1 outer-truncate=1
+PASS a pi-shape fd sink carries access records — wrap design viable
+summary: assert-check=0

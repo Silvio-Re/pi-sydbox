@@ -1,0 +1,27 @@
+{
+  "note": "projection of landstrip resolve; roots truncated to the ones that matter",
+  "readMode": "allowRoots",
+  "readRootsInScratch": [
+    "@SCRATCH@",
+    "@SCRATCH@/ok",
+    "@SCRATCH@/p.json"
+  ],
+  "readRootCount": 1555,
+  "readSymlinks": [
+    "/bin",
+    "/lib",
+    "/lib32",
+    "/lib64",
+    "/libx32",
+    "/sbin"
+  ],
+  "writeRoots": [
+    "@SCRATCH@"
+  ],
+  "readDenialRoots": [
+    "@SCRATCH@/secret"
+  ],
+  "writeDenialRoots": [
+    "@SCRATCH@/secret"
+  ]
+}

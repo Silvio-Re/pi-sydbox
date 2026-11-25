@@ -1,0 +1,5 @@
+engine: landstrip
+version: landstrip 0.20.29
+binary: @HOME@/.pi/agent/npm/node_modules/@landstrip/landstrip-linux-x64/bin/landstrip
+sha256: 56507e5ac9ce86d4a9cb6c9212f738f90c34018c038091e83f27270b93d12a96
+recorded: 2026-11-25

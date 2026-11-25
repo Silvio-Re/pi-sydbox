@@ -1,0 +1,24 @@
+== 1. compile a policy into a profile ==
+include_profile linux
+sandbox/lock:off
+allow/lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr+@SCRATCH@/allow
+allow/lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr+@SCRATCH@/allow/***
+allow/lpath,npath,rpath,exec+@SCRATCH@/allow
+allow/lpath,npath,rpath,exec+@SCRATCH@/allow/***
+deny/lpath,npath,rpath,readdir+@SCRATCH@/deny/secret.txt
+deny/lpath,npath,rpath,readdir+@SCRATCH@/deny/secret.txt/***
+PROFILE=@SCRATCH@/sydbox.syd-3
+mode=600 (expect 600)
+
+== 2. allowed write inside allowWrite ==
+rc=0 out=
+PASS allow
+
+== 3. denied read of denyReadAlways ==
+rc=1 out={"id":"80b12a5326870eaa28521d796403293b686ad3fbdd84f66d76286f55d26b41fc","hid":"sexual_revolution","syd":151170,"ctx":"access","cap":"read","act":"deny","sys":"openat","fs":"ext","path":"/tmp/pi-sydbo
+PASS deny
+
+== 4. the denials were not read as allows ==
+PASS profile carries a deny rule
+
+summary: allow=ok deny=ok

@@ -99,7 +99,7 @@ marker; never compared to the golden set.
 | id | probe | landstrip 0.20.29 |
 |---|---|---|
 | D1 | read a deny-globbed file | deny |
-| D2 | append to a deny-globbed file | allow (0.20 bug; syd must deny) |
+| D2 | append to a deny-globbed file | deny (0.20.29, captured; the older "allowed" report did not reproduce) |
 | D3 | `rm` and `mv` of a deny-globbed path | deny |
 | D4 | `ln` denied source to allowed target | deny |
 | D5 | write `/proc/self/oom_score_adj` | deny + prompt shape |

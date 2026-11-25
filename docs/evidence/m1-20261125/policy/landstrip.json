@@ -1,0 +1,8 @@
+{
+  "filesystem": {
+    "allowRead": ["@ROOT@"],
+    "allowWrite": ["@ROOT@"],
+    "denyRead": ["@ROOT@/secret"],
+    "denyWrite": ["@ROOT@/secret"]
+  }
+}

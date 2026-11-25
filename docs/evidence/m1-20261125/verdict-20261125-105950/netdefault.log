@@ -1,0 +1,6 @@
+PASS loopback connect reaches the stack (profile cnet loopback rule)
+LOOPBACK: allowed-by-profile
+PASS outbound connect denied with EACCES (default net posture holds)
+NETWORK-DEFAULT: denied-by-sandbox
+PASS net/connect deny record captured
+summary: assert-check=0

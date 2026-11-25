@@ -1,0 +1,4 @@
+case	verdict	rc	result
+d01-read-deny	deny	0	deny
+d02-append-deny	deny	0	deny
+d03-unlink-mv-deny	deny	0	deny

@@ -1,0 +1,14 @@
+engine: @HOME@/.local/opt/syd-3.59.0/syd
+work:   @SCRATCH@
+
+c1  1 script arg, ROOT/*** (control) rc=0  out=                          
+c2  2 same profile, /bin/sh -c       rc=0  out=                          
+c3  3 bare dir rule, /bin/sh -c      rc=0  out=                          
+c4  4 dir/*** rule, /bin/sh -c       rc=0  out=                          
+c5  5 dir/*** + deny, write          rc=0  out=                          
+c6  6 dir/*** + deny, read denied    rc=0  out=x                         
+
+case 4 actually wrote the file: yes
+control c1 passes: engine works here, only profile shape differs.
+c3 fails while c4 passes: a directory rule must be <dir>/*** (fix in compiler).
+c6 rc=1 with a deny in its log: the deny is enforced on the subtree.

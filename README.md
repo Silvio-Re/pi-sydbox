@@ -35,7 +35,7 @@ with no hypervisor and no user namespace.
 
 1. Kernel-level enforcement only: seccomp / Landlock. No `/dev/kvm`, no user namespaces.
 2. `syd.lock` is the single pin: exact version, URL, sha512, signing key, installed path.
-3. Namespace policy is an ADR outcome, not an assumption (`docs/decisions/0001-namespace-policy.md`).
+3. Namespace policy is an ADR outcome, not an assumption (`docs/decisions/0001-namespace-policy.md`); the golden-set corpus profile is likewise an ADR outcome (`docs/decisions/0002-corpus-profile.md`).
 4. Policy parsing fails closed; ambiguous records are discarded toward deny and logged.
 5. Deny by default on every dimension not explicitly granted.
 6. Approval semantics follow landstrip's actual dialog, inventoried before implementing.

@@ -1,0 +1,9 @@
+
+case                       result        status
+d01-read-deny              deny          rc=0
+d02-append-deny            deny          rc=0
+d03-unlink-mv-deny         deny          rc=0
+
+counts: allow=0 deny=3 prompt=0 timeout=0 engine-error=0 error=0
+run: label=verdict timeout=30s cases=3 out=results/verdict
+summary: results/verdict/summary.tsv

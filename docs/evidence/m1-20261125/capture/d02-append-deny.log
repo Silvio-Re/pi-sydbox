@@ -1,0 +1,3 @@
+@SCRATCH@/d02-append-deny.sh: 10: cannot create @SCRATCH@/secret: Permission denied
+verdict=deny
+{"kind":"filesystem","code":"FILESYSTEM_DENIED","state":"info","query_id":"0","operation":"write","path":"@SCRATCH@/secret","requested_path":"@SCRATCH@/secret","syscall":"openat","errno":"EACCES","flags":["O_WRONLY","O_CREAT","O_APPEND"],"reason":"deny_match","suggested_grant":{"allowWrite":"@SCRATCH@/secret"},"process":{"pid":216196,"exe":"/usr/bin/dash","cwd":"@SHARE@/CERIB/Programmes/pi-sydbox"},"mechanism":"seccomp"}

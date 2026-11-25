@@ -1,0 +1,6 @@
+FAIL fixed cell produced no verdict (empty)
+PASS no forged record reached the sink
+FAIL engine records no longer reach the sink
+WARN control cell did not show fd 3 (empty) — visibility probe may be inert
+VERDICT-FD3 fixed=? control=? forged=0
+summary: assert-check=1

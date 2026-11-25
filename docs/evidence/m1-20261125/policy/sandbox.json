@@ -1,0 +1,112 @@
+{
+  "enabled": true,
+  "shell": {
+    "readAccess": "policy"
+  },
+  "network": {
+    "allowNetwork": true,
+    "allowLocalBinding": false,
+    "allowAllUnixSockets": false,
+    "allowUnixSockets": [
+      "/tmp",
+      "@RUNTIME@/wine"
+    ],
+    "allowedDomains": [],
+    "deniedDomains": []
+  },
+  "filesystem": {
+    "denyRead": [
+      "/Users",
+      "~/.env",
+      "~/.env.local",
+      "~/.env.development",
+      "~/.env.production",
+      "~/.env.test"
+    ],
+    "denyReadAlways": [
+      "~/.ssh",
+      "~/.ssh/**",
+      "~/.netrc",
+      "~/.gnupg",
+      "~/.gnupg/**"
+    ],
+    "allowRead": [
+      ".",
+      "~/.gitconfig",
+      "~/.config/git/config",
+      "/dev/null",
+      "/dev/urandom",
+      "/dev/random",
+      "/usr",
+      "/lib",
+      "/lib64",
+      "/bin",
+      "/sbin",
+      "/opt",
+      "/etc",
+      "/tmp",
+      "/var/tmp",
+      "/proc",
+      "/sys",
+      "@HOME@/.nvm",
+      "@HOME@/.npm",
+      "/home"
+    ],
+    "allowWrite": [
+      "/IDENTITY.KEY",
+      ".",
+      "/dev/null",
+      "/tmp",
+      "@HOME@/.npm",
+      "@HOME@/.gitconfig.lock",
+      "@HOME@/.git",
+      "@HOME@/.cache",
+      "@HOME@/.local",
+      "@SHARE@/CERIB/resources/informatique/python/util_silvio/util_silvio/__pycache__",
+      "@HOME@/anaconda3",
+      "@HOME@/.mozilla",
+      "/dev/shm",
+      "@RUNTIME@/dconf",
+      "/proc",
+      "/var/cache",
+      "/usr/share/fonts",
+      "/usr/local/share/fonts",
+      "/usr/share/texmf/fonts/opentype/public/lm",
+      "/usr/share/texmf/fonts/opentype/public/lm-math",
+      "/usr/share/texmf/fonts/opentype/public/tex-gyre-math",
+      "/usr/share/texmf/fonts/opentype/public/tex-gyre",
+      "/usr/share/poppler/cMap/Adobe-CNS1",
+      "/usr/share/poppler/cMap/Adobe-GB1",
+      "/usr/share/poppler/cMap/Adobe-Japan1",
+      "/usr/share/poppler/cMap/Adobe-Japan2",
+      "/usr/share/poppler/cMap/Adobe-Korea1",
+      "/dev",
+      "@HOME@/.pi",
+      "@RUNTIME@/wine",
+      "@HOME@/.config/matplotlib",
+      "@HOME@/.fltk",
+      "@HOME@/.config/libreoffice",
+      "/var/spool/libreoffice",
+      "/usr/lib/libreoffice/share/palette",
+      "@SHARE@/CERIB/Programmes/docx-kit/models",
+      "@SHARE@/CERIB/Programmes/docx-kit/manifests",
+      "@SHARE@/CERIB/Programmes/docx-kit/derived",
+      "@HOME@/.thunderbird"
+    ],
+    "denyWrite": [
+      ".pi/landstrip.json",
+      ".pi/sandbox.json",
+      "~/.gnupg",
+      "~/.pi/agent/landstrip.json",
+      "~/.pi/agent/sandbox.json"
+    ],
+    "denyWriteAlways": [
+      "~/.ssh",
+      "~/.ssh/**"
+    ]
+  },
+  "windows": {
+    "appContainerMode": "standard",
+    "allowLoopback": false
+  }
+}

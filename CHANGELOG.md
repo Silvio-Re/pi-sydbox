@@ -30,6 +30,35 @@
   - Doc staleness: README test count (119), `design.md` store-schema
     sentence, corpus `-P` engine examples (pinned 3.59.0 path),
     `KNOWN_FIELDS_VERSION` wording, `design.md` opening engine pin.
+- M1 (landstrip golden capture) prepared, minus the capture itself, which
+  needs the real engine in a plain terminal. Committed: the corpus profile
+  `corpus/profiles/landstrip.json` and its reduction rationale (ADR
+  `docs/decisions/0002-corpus-profile.md`), `tools/golden-tsv.sh` (summary.tsv
+  to golden rows, refusing rows the harness could not classify),
+  `tools/sanitize-evidence.sh` (host-path sanitizing for committed evidence),
+  the `docs/evidence/m1-20261125/` record (phase-0 policy, engine identity,
+  the two cited verdict runs, the probes tracked code comments reference), and
+  a `landstrip-golden` step in `agent_dir/spike/verdict.sh` that runs the
+  capture, writes `expectations/landstrip.tsv` and copies the sanitized
+  capture into the evidence directory. The step fails a capture in which every
+  D case allowed: that means the deny rule is inert, and committing those rows
+  would freeze "landstrip denies nothing" into the baseline.
+- The first golden capture (2026-11-25 14:30) was withdrawn rather than
+  committed. D1 and D3 reported `deny` because the case scripts' own
+  `>/dev/null` redirect was denied by a profile that grants nothing outside the
+  scratch root, so neither case ran the operation it names; the three cases in
+  `corpus/d/` no longer redirect to `/dev/null`, and the capture step now fails a
+  deny whose
+  engine record does not name the probed path. D2 came back `deny` — the
+  reported landstrip 0.20 append bug did not reproduce on 0.20.29 — so the D2
+  row in `docs/design.md` and the text in `expectations/README.md` record the
+  measurement instead of the prediction. The re-run at 14:34 produced the three
+  rows now in `expectations/landstrip.tsv`, each with a denial record on the path
+  its case names — the check the capture step now enforces.
+- `tools/golden-tsv.sh` writes the note column from the case script's header
+  summary line only: the D cases carry the full explanation of what each one
+  once measured wrongly, and a golden file with those paragraphs inline stopped
+  being readable as a table.
 - Plan of record: `docs/ROADMAP.md` is the executable path from working
   adapter to a v1.0 usable by others from a fresh clone. Work is split
   into environment-bound orders (VM/CI agents vs the end-usage machine),

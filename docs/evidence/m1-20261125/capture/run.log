@@ -1,0 +1,9 @@
+
+case                       result        status
+d01-read-deny              deny          rc=0
+d02-append-deny            deny          rc=0
+d03-unlink-mv-deny         deny          rc=0
+
+counts: allow=0 deny=3 prompt=0 timeout=0 engine-error=0 error=0
+run: label=landstrip-golden timeout=30s cases=3 out=@SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/spike/results/landstrip-golden
+summary: @SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/spike/results/landstrip-golden/summary.tsv

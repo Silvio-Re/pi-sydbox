@@ -1,0 +1,7 @@
+PASS records captured (6 line(s))
+PASS openat deny record: targetfile
+REPORT openat records on targetdir: 0 (expected 0, kernel EISDIR by design)
+PASS rmdir deny record: targetdir
+PASS mkdir deny record: targetdir/new
+REPORT type field occurrences: 4 (mapper dir detection needs no type from this engine)
+summary: assert-check=0

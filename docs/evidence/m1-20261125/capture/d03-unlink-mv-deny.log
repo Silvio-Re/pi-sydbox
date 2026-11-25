@@ -1,0 +1,5 @@
+mv: impossible de déplacer '@SCRATCH@/secret' vers '@SCRATCH@/ok/moved': Permission non accordée
+rm: impossible de supprimer '@SCRATCH@/secret': Permission non accordée
+verdict=deny
+{"kind":"filesystem","code":"FILESYSTEM_DENIED","state":"info","query_id":"0","operation":"write","path":"@SCRATCH@/secret","requested_path":"@SCRATCH@/secret","syscall":"renameat2","errno":"EACCES","flags":[],"reason":"deny_match","suggested_grant":{"allowWrite":"@SCRATCH@/secret"},"process":{"pid":216209,"exe":"/usr/bin/mv","cwd":"@SHARE@/CERIB/Programmes/pi-sydbox"},"mechanism":"seccomp"}
+{"kind":"filesystem","code":"FILESYSTEM_DENIED","state":"info","query_id":"0","operation":"write","path":"@SCRATCH@/secret","requested_path":"@SCRATCH@/secret","syscall":"unlinkat","errno":"EACCES","flags":[],"reason":"deny_match","suggested_grant":{"allowWrite":"@SCRATCH@/secret"},"process":{"pid":216210,"exe":"/usr/bin/rm","cwd":"@SHARE@/CERIB/Programmes/pi-sydbox"},"mechanism":"seccomp"}

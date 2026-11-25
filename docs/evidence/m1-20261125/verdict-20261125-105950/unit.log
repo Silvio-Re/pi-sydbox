@@ -1,0 +1,580 @@
+TAP version 13
+# Subtest: variant A rejects any unshare rule
+ok 1 - variant A rejects any unshare rule
+  ---
+  duration_ms: 1.560877
+  type: 'test'
+  ...
+# Subtest: variant A rejects bind rules because they need a mount namespace
+ok 2 - variant A rejects bind rules because they need a mount namespace
+  ---
+  duration_ms: 0.106757
+  type: 'test'
+  ...
+# Subtest: variant A accepts a clean landlock+seccomp profile
+ok 3 - variant A accepts a clean landlock+seccomp profile
+  ---
+  duration_ms: 0.113536
+  type: 'test'
+  ...
+# Subtest: variant B permits a mount namespace
+ok 4 - variant B permits a mount namespace
+  ---
+  duration_ms: 0.071036
+  type: 'test'
+  ...
+# Subtest: variant B still rejects the user namespace, alone or in a list
+ok 5 - variant B still rejects the user namespace, alone or in a list
+  ---
+  duration_ms: 0.204621
+  type: 'test'
+  ...
+# Subtest: compileProfile emits the verified engine shape
+ok 6 - compileProfile emits the verified engine shape
+  ---
+  duration_ms: 0.181727
+  type: 'test'
+  ...
+# Subtest: compileProfile puts denies last so they win
+ok 7 - compileProfile puts denies last so they win
+  ---
+  duration_ms: 0.241649
+  type: 'test'
+  ...
+# Subtest: compileProfile maps each policy field onto the engine vocabulary
+ok 8 - compileProfile maps each policy field onto the engine vocabulary
+  ---
+  duration_ms: 0.406703
+  type: 'test'
+  ...
+# Subtest: a disabled sandbox turns the engine off rather than emitting nothing
+ok 9 - a disabled sandbox turns the engine off rather than emitting nothing
+  ---
+  duration_ms: 0.268143
+  type: 'test'
+  ...
+# Subtest: network is not granted when disabled, even with an allow list
+ok 10 - network is not granted when disabled, even with an allow list
+  ---
+  duration_ms: 0.261565
+  type: 'test'
+  ...
+# Subtest: a stored grant lands before the denies, never after them
+ok 11 - a stored grant lands before the denies, never after them
+  ---
+  duration_ms: 0.23002
+  type: 'test'
+  ...
+# Subtest: a stored grant cannot smuggle a denial; multi-line grants are checked line by line
+ok 12 - a stored grant cannot smuggle a denial; multi-line grants are checked line by line
+  ---
+  duration_ms: 0.953262
+  type: 'test'
+  ...
+# Subtest: toSydGlobs covers both object and subtree spellings
+ok 13 - toSydGlobs covers both object and subtree spellings
+  ---
+  duration_ms: 0.182686
+  type: 'test'
+  ...
+# Subtest: relative policy paths are refused rather than silently compiled
+ok 14 - relative policy paths are refused rather than silently compiled
+  ---
+  duration_ms: 0.131814
+  type: 'test'
+  ...
+# Subtest: every grant label maps onto its tier
+ok 15 - every grant label maps onto its tier
+  ---
+  duration_ms: 1.413952
+  type: 'test'
+  ...
+# Subtest: Deny, dismissal and an unknown label all reject
+ok 16 - Deny, dismissal and an unknown label all reject
+  ---
+  duration_ms: 0.181142
+  type: 'test'
+  ...
+# Subtest: a dialog that throws denies instead of propagating
+ok 17 - a dialog that throws denies instead of propagating
+  ---
+  duration_ms: 0.308859
+  type: 'test'
+  ...
+# Subtest: the timeout is the documented constant unless the caller overrides it
+ok 18 - the timeout is the documented constant unless the caller overrides it
+  ---
+  duration_ms: 0.172438
+  type: 'test'
+  ...
+# Subtest: the prompt is passed through untouched
+ok 19 - the prompt is passed through untouched
+  ---
+  duration_ms: 0.137647
+  type: 'test'
+  ...
+# Subtest: shellQuote survives quotes, spaces and the empty string
+ok 20 - shellQuote survives quotes, spaces and the empty string
+  ---
+  duration_ms: 0.785077
+  type: 'test'
+  ...
+# Subtest: the wrapped command keeps the tool's bash -c semantics and logs to a file
+ok 21 - the wrapped command keeps the tool's bash -c semantics and logs to a file
+  ---
+  duration_ms: 0.749068
+  type: 'test'
+  ...
+# Subtest: the record fd is close-on-exec and helper failure is fail-closed
+ok 22 - the record fd is close-on-exec and helper failure is fail-closed
+  ---
+  duration_ms: 0.638914
+  type: 'test'
+  ...
+# Subtest: a profile that breaks the namespace invariant is refused at wrap time
+ok 23 - a profile that breaks the namespace invariant is refused at wrap time
+  ---
+  duration_ms: 0.24163
+  type: 'test'
+  ...
+# Subtest: only lines after the offset are reported, and only denials
+ok 24 - only lines after the offset are reported, and only denials
+  ---
+  duration_ms: 1.918775
+  type: 'test'
+  ...
+# Subtest: a notice or a corrupt line advances the offset without becoming a record
+ok 25 - a notice or a corrupt line advances the offset without becoming a record
+  ---
+  duration_ms: 0.708701
+  type: 'test'
+  ...
+# Subtest: kill, panic, abort and filter are denials too — worse news must not vanish
+ok 26 - kill, panic, abort and filter are denials too — worse news must not vanish
+  ---
+  duration_ms: 0.294398
+  type: 'test'
+  ...
+# Subtest: initialLogOffset is the existing log size, so history is not re-prompted
+ok 27 - initialLogOffset is the existing log size, so history is not re-prompted
+  ---
+  duration_ms: 0.780731
+  type: 'test'
+  ...
+# Subtest: stateLayout is per-project and outside the workspace by default
+ok 28 - stateLayout is per-project and outside the workspace by default
+  ---
+  duration_ms: 0.841192
+  type: 'test'
+  ...
+# Subtest: an explicit engine path is used only when it is executable
+ok 29 - an explicit engine path is used only when it is executable
+  ---
+  duration_ms: 2.112253
+  type: 'test'
+  ...
+# Subtest: C5: a machine lock naming a missing engine refuses instead of scanning to a newer one
+ok 30 - C5: a machine lock naming a missing engine refuses instead of scanning to a newer one
+  ---
+  duration_ms: 5.509841
+  type: 'test'
+  ...
+# Subtest: activate registers the tool_call and tool_result hooks
+ok 31 - activate registers the tool_call and tool_result hooks
+  ---
+  duration_ms: 0.499922
+  type: 'test'
+  ...
+# Subtest: a bash tool call is rewritten to run under the engine
+ok 32 - a bash tool call is rewritten to run under the engine
+  ---
+  duration_ms: 7.584119
+  type: 'test'
+  ...
+# Subtest: tools other than bash and non-string commands pass through untouched
+ok 33 - tools other than bash and non-string commands pass through untouched
+  ---
+  duration_ms: 2.011549
+  type: 'test'
+  ...
+# Subtest: a session grant is compiled into the profile the next call uses
+ok 34 - a session grant is compiled into the profile the next call uses
+  ---
+  duration_ms: 9.000227
+  type: 'test'
+  ...
+# Subtest: the prompt budget stops the batch and reports what was left denied
+ok 35 - the prompt budget stops the batch and reports what was left denied
+  ---
+  duration_ms: 25.753948
+  type: 'test'
+  ...
+# Subtest: user_bash is gated: it wraps or refuses, never falls through
+ok 36 - user_bash is gated: it wraps or refuses, never falls through
+  ---
+  duration_ms: 33.573304
+  type: 'test'
+  ...
+# Subtest: initialLogOffset counts UTF-16 units, not bytes (C1)
+ok 37 - initialLogOffset counts UTF-16 units, not bytes (C1)
+  ---
+  duration_ms: 0.884624
+  type: 'test'
+  ...
+# Subtest: an allow-once grant feeds exactly one spawn and can prompt again (C2)
+ok 38 - an allow-once grant feeds exactly one spawn and can prompt again (C2)
+  ---
+  duration_ms: 8.523291
+  type: 'test'
+  ...
+# Subtest: a sandbox.json deny is reported as a policy deny, not offered as a grant (S3)
+ok 39 - a sandbox.json deny is reported as a policy deny, not offered as a grant (S3)
+  ---
+  duration_ms: 14.47379
+  type: 'test'
+  ...
+# Subtest: unrecognised log lines are counted and reported, not swallowed (D3)
+ok 40 - unrecognised log lines are counted and reported, not swallowed (D3)
+  ---
+  duration_ms: 10.235948
+  type: 'test'
+  ...
+# Subtest: builds syd -P profile -- command argv
+ok 41 - builds syd -P profile -- command argv
+  ---
+  duration_ms: 2.880346
+  type: 'test'
+  ...
+# Subtest: refuses a relative engine path (invariant 7: no PATH lookup)
+ok 42 - refuses a relative engine path (invariant 7: no PATH lookup)
+  ---
+  duration_ms: 0.268741
+  type: 'test'
+  ...
+# Subtest: refuses an empty command
+ok 43 - refuses an empty command
+  ---
+  duration_ms: 0.102179
+  type: 'test'
+  ...
+# Subtest: refuses a log fd below 3 so it cannot clobber stdout/stderr
+ok 44 - refuses a log fd below 3 so it cannot clobber stdout/stderr
+  ---
+  duration_ms: 0.077018
+  type: 'test'
+  ...
+# Subtest: refuses a profile that violates the namespace variant
+ok 45 - refuses a profile that violates the namespace variant
+  ---
+  duration_ms: 0.236544
+  type: 'test'
+  ...
+# Subtest: puts -P PATH right after the engine, before --
+ok 46 - puts -P PATH right after the engine, before --
+  ---
+  duration_ms: 0.231849
+  type: 'test'
+  ...
+# Subtest: places engine flags between the profile and --
+ok 47 - places engine flags between the profile and --
+  ---
+  duration_ms: 0.198328
+  type: 'test'
+  ...
+# Subtest: refuses profile text without a path, and a relative profile path
+ok 48 - refuses profile text without a path, and a relative profile path
+  ---
+  duration_ms: 0.133118
+  type: 'test'
+  ...
+# Subtest: wires SYD_LOG_FD and reserves the descriptor in stdio
+ok 49 - wires SYD_LOG_FD and reserves the descriptor in stdio
+  ---
+  duration_ms: 0.3142
+  type: 'test'
+  ...
+# Subtest: drops an inherited SYD_LOG_FD when no log fd is given
+ok 50 - drops an inherited SYD_LOG_FD when no log fd is given
+  ---
+  duration_ms: 0.374387
+  type: 'test'
+  ...
+# Subtest: builds the engine self check argv
+ok 51 - builds the engine self check argv
+  ---
+  duration_ms: 0.272493
+  type: 'test'
+  ...
+# Subtest: writes the profile 0600 through a same-directory rename
+ok 52 - writes the profile 0600 through a same-directory rename
+  ---
+  duration_ms: 0.843453
+  type: 'test'
+  ...
+# Subtest: a pre-existing group-writable profile directory is tightened
+ok 53 - a pre-existing group-writable profile directory is tightened
+  ---
+  duration_ms: 0.320946
+  type: 'test'
+  ...
+# Subtest: removes its temp file when the rename fails
+ok 54 - removes its temp file when the rename fails
+  ---
+  duration_ms: 0.396992
+  type: 'test'
+  ...
+# Subtest: placeProfile keeps the profile in the work directory when that works
+ok 55 - placeProfile keeps the profile in the work directory when that works
+  ---
+  duration_ms: 1.106421
+  type: 'test'
+  ...
+# Subtest: placeProfile relocates when the work directory cannot hold a private profile
+ok 56 - placeProfile relocates when the work directory cannot hold a private profile
+  ---
+  duration_ms: 1.665256
+  type: 'test'
+  ...
+# Subtest: placeProfile fails closed when no candidate directory can be private
+ok 57 - placeProfile fails closed when no candidate directory can be private
+  ---
+  duration_ms: 0.377286
+  type: 'test'
+  ...
+# Subtest: fsAllowFor emits one allow/fs line per distinct magic, deduplicating
+ok 58 - fsAllowFor emits one allow/fs line per distinct magic, deduplicating
+  ---
+  duration_ms: 0.130337
+  type: 'test'
+  ...
+# Subtest: fsAllowFor drops the ext magic (include_profile already allows it) and skips unstatable paths
+ok 59 - fsAllowFor drops the ext magic (include_profile already allows it) and skips unstatable paths
+  ---
+  duration_ms: 0.121029
+  type: 'test'
+  ...
+# Subtest: fsAllowFor climbs to the nearest existing ancestor for a path that does not exist yet
+ok 60 - fsAllowFor climbs to the nearest existing ancestor for a path that does not exist yet
+  ---
+  duration_ms: 0.146199
+  type: 'test'
+  ...
+# Subtest: fsAllowFor lines ride extraAllows and never follow a deny of a compiled profile
+ok 61 - fsAllowFor lines ride extraAllows and never follow a deny of a compiled profile
+  ---
+  duration_ms: 0.300129
+  type: 'test'
+  ...
+# Subtest: default: a workspace legacy store is not imported (fresh clone safety)
+ok 62 - default: a workspace legacy store is not imported (fresh clone safety)
+  ---
+  duration_ms: 12.181155
+  type: 'test'
+  ...
+# Subtest: PI_SYDBOX_IMPORT_LEGACY=1 imports the workspace legacy store once
+ok 63 - PI_SYDBOX_IMPORT_LEGACY=1 imports the workspace legacy store once
+  ---
+  duration_ms: 11.956285
+  type: 'test'
+  ...
+# Subtest: a denied exec maps onto the rule the engine itself suggests
+ok 64 - a denied exec maps onto the rule the engine itself suggests
+  ---
+  duration_ms: 1.320202
+  type: 'test'
+  ...
+# Subtest: read and write caps widen to their category lists
+ok 65 - read and write caps widen to their category lists
+  ---
+  duration_ms: 0.170865
+  type: 'test'
+  ...
+# Subtest: a relative path is resolved against the project root
+ok 66 - a relative path is resolved against the project root
+  ---
+  duration_ms: 0.117474
+  type: 'test'
+  ...
+# Subtest: a recursive path keeps the engine's recursion spelling
+ok 67 - a recursive path keeps the engine's recursion spelling
+  ---
+  duration_ms: 0.083721
+  type: 'test'
+  ...
+# Subtest: network records grant the host and port the engine reported
+ok 68 - network records grant the host and port the engine reported
+  ---
+  duration_ms: 0.16611
+  type: 'test'
+  ...
+# Subtest: a dir record grants the subtree, a file record stays bare
+ok 69 - a dir record grants the subtree, a file record stays bare
+  ---
+  duration_ms: 0.104146
+  type: 'test'
+  ...
+# Subtest: an unrecognised cap stays denied instead of guessing
+ok 70 - an unrecognised cap stays denied instead of guessing
+  ---
+  duration_ms: 0.103991
+  type: 'test'
+  ...
+# Subtest: an allow record is not turned into a grant
+ok 71 - an allow record is not turned into a grant
+  ---
+  duration_ms: 0.068432
+  type: 'test'
+  ...
+# Subtest: a record with no target stays denied
+ok 72 - a record with no target stays denied
+  ---
+  duration_ms: 0.161718
+  type: 'test'
+  ...
+# Subtest: network policy entries and captured addrs share one truth table (C3)
+ok 73 - network policy entries and captured addrs share one truth table (C3)
+  ---
+  duration_ms: 0.242137
+  type: 'test'
+  ...
+# Subtest: readdir and fattr caps map to their category lists (C4)
+ok 74 - readdir and fattr caps map to their category lists (C4)
+  ---
+  duration_ms: 0.178587
+  type: 'test'
+  ...
+# Subtest: one netRule table for policy and records: compiler output is exact per shape (C3)
+ok 75 - one netRule table for policy and records: compiler output is exact per shape (C3)
+  ---
+  duration_ms: 0.261989
+  type: 'test'
+  ...
+# Subtest: parses a real path-denial line and keeps its extra fields
+ok 76 - parses a real path-denial line and keeps its extra fields
+  ---
+  duration_ms: 1.507963
+  type: 'test'
+  ...
+# Subtest: normalizes a capitalized act
+ok 77 - normalizes a capitalized act
+  ---
+  duration_ms: 0.153289
+  type: 'test'
+  ...
+# Subtest: parses a network violation as a net record
+ok 78 - parses a network violation as a net record
+  ---
+  duration_ms: 0.173466
+  type: 'test'
+  ...
+# Subtest: skips informational lines and counts them
+ok 79 - skips informational lines and counts them
+  ---
+  duration_ms: 0.162592
+  type: 'test'
+  ...
+# Subtest: reports an unknown field as drift in strict mode
+ok 80 - reports an unknown field as drift in strict mode
+  ---
+  duration_ms: 0.354578
+  type: 'test'
+  ...
+# Subtest: collects an unknown field in lenient mode
+ok 81 - collects an unknown field in lenient mode
+  ---
+  duration_ms: 0.266838
+  type: 'test'
+  ...
+# Subtest: rejects the same unknown field in strict mode
+ok 82 - rejects the same unknown field in strict mode
+  ---
+  duration_ms: 0.16853
+  type: 'test'
+  ...
+# Subtest: leaves unknown undefined when every field is known
+ok 83 - leaves unknown undefined when every field is known
+  ---
+  duration_ms: 0.103954
+  type: 'test'
+  ...
+# Subtest: rejects each missing required field and a non-string cap
+ok 84 - rejects each missing required field and a non-string cap
+  ---
+  duration_ms: 0.290057
+  type: 'test'
+  ...
+# Subtest: rejects an unknown act
+ok 85 - rejects an unknown act
+  ---
+  duration_ms: 0.233837
+  type: 'test'
+  ...
+# Subtest: rejects an access record with neither path nor addr/unix
+ok 86 - rejects an access record with neither path nor addr/unix
+  ---
+  duration_ms: 0.817834
+  type: 'test'
+  ...
+# Subtest: rejects non-JSON and empty lines
+ok 87 - rejects non-JSON and empty lines
+  ---
+  duration_ms: 0.133216
+  type: 'test'
+  ...
+# Subtest: parses the captured 3.59.0 access record in strict mode
+ok 88 - parses the captured 3.59.0 access record in strict mode
+  ---
+  duration_ms: 3.50724
+  type: 'test'
+  ...
+# Subtest: a missing store reads as empty
+ok 89 - a missing store reads as empty
+  ---
+  duration_ms: 1.381346
+  type: 'test'
+  ...
+# Subtest: appending keeps the tier and the rule verbatim
+ok 90 - appending keeps the tier and the rule verbatim
+  ---
+  duration_ms: 0.855134
+  type: 'test'
+  ...
+# Subtest: once and session are memory-only: persisting them is refused
+ok 91 - once and session are memory-only: persisting them is refused
+  ---
+  duration_ms: 0.575184
+  type: 'test'
+  ...
+# Subtest: the same grant is stored once, different tiers separately
+ok 92 - the same grant is stored once, different tiers separately
+  ---
+  duration_ms: 0.782796
+  type: 'test'
+  ...
+# Subtest: a rule that would break the profile is refused
+ok 93 - a rule that would break the profile is refused
+  ---
+  duration_ms: 0.590696
+  type: 'test'
+  ...
+# Subtest: a corrupt store is reported, not silently reset
+ok 94 - a corrupt store is reported, not silently reset
+  ---
+  duration_ms: 0.404303
+  type: 'test'
+  ...
+# Subtest: a write leaves no temporary file behind
+ok 95 - a write leaves no temporary file behind
+  ---
+  duration_ms: 0.392277
+  type: 'test'
+  ...
+1..95
+# tests 95
+# suites 0
+# pass 95
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 411.448836

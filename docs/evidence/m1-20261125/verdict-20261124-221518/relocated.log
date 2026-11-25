@@ -1,0 +1,23 @@
+== 1. compile and place the profile
+profile=@HOME@/.cache/pi-sydbox-probe/85146f4d2cb1c6f8/profiles/sydbox.syd-3
+fstype(work)=vboxsf fstype(profile)=ext2/ext3
+PASS relocated (profile directory cannot be made private on this filesystem: @SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/.sydbox-probe-62093/profiles)
+PASS profile on guest disk
+PASS mode 600
+
+== 2. diagnostic cells: does ANY of the two spellings grant a write, and on which filesystem
+DIAG B1 compiled spelling, guest disk: GRANTED (rc=0, file created)
+DIAG B2 corpus spelling, guest disk: GRANTED (rc=0, file created)
+DIAG C1 compiled spelling, vboxsf: DENIED  rc=2 out={"id":"5577baefe43f6b9b2bc536e7dc9a8ba7a37c1377076e78f3d2494a10c2126b90","hid":"several_species_of_small_furry_animals_gathered_together_in_a_cave_and_grooving_with_a_pict","syd":62145,"ctx":"access","cap":["write","create"],"act":"deny","sys":"openat","fs":2020557398,"path":"@SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/.sydbox-probe-62093/allow/f.txt","mode":438,"oflags":["cloexec","creat","nofollow","trunc","wronly"],"rflags":["no-follow"],"cmd":"/bin/sh -c printf ok >'@SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/.sydbox-probe-62093/allow/f.txt'","cwd":"@HOME@/.pi/agent/npm","tty":"/dev/pts/5","pid":62141,"uid":1000,"time":"20261124T211523Z","tip":"configure `allow/write,create+@SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/.sydbox-probe-62093/allow/f.txt'"}
+DIAG C2 corpus spelling, vboxsf: DENIED  rc=2 out={"id":"11c5eb01962e6301cfa090256d4438d5be269cc8c1f76cf974b74f3ee53a22ff","hid":"southampton_dock","syd":62156,"ctx":"access","cap":["write","create"],"act":"deny","sys":"openat","fs":2020557398,"path":"@SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/.sydbox-probe-62093/allow/g.txt","mode":438,"oflags":["cloexec","creat","nofollow","trunc","wronly"],"rflags":["no-follow"],"cmd":"/bin/sh -c printf ok >'@SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/.sydbox-probe-62093/allow/g.txt'","cwd":"@HOME@/.pi/agent/npm","tty":"/dev/pts/5","pid":62152,"uid":1000,"time":"20261124T211523Z","tip":"configure `allow/write,create+@SHARE@/CERIB/Programmes/pi-sydbox/agent_dir/.sydbox-probe-62093/allow/g.txt'"}
+
+== 3. the denied read through the relocated profile
+PASS deny
+
+== 4. cures for the vboxsf write-deny (CAP_FS guard), through the relocated profile
+DIAG D1 allow/fs+0x786f4256 (asserted): GRANTED (rc=0, file created)
+DIAG D2 sandbox/fs:off (informational): GRANTED (rc=0, file created)
+PASS cure fs-allow (write granted on vboxsf with allow/fs+0x786f4256)
+PASS deny with fs-allow
+
+summary: assert-check=0

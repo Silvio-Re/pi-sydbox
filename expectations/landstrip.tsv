@@ -1,0 +1,4 @@
+case	engine	version	verdict	date	note
+d01-read-deny	landstrip	0.20.29	deny	2026-11-25	D1 — reading a deny-globbed file must be denied.
+d02-append-deny	landstrip	0.20.29	deny	2026-11-25	D2 — appending to a deny-globbed file must be denied.
+d03-unlink-mv-deny	landstrip	0.20.29	deny	2026-11-25	D3 — rename and unlink of a deny-globbed path must both be denied.

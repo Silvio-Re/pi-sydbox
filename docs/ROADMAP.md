@@ -218,6 +218,31 @@ Plain terminal, in the checkout:
 Gate M1: golden TSV and `docs/evidence/` committed and referenced by
 docs; landstrip verdicts recorded for every existing D case.
 
+State (2026-11-25): steps 1 and 4 are done — `corpus/profiles/landstrip.json`
+with its reduction rationale in `docs/decisions/0002-corpus-profile.md`, and
+`docs/evidence/m1-20261125/` holding the phase-0 policy, the engine identity,
+the two cited verdict runs and the probes the tracked code comments cite.
+Steps 2-3 are one handover: `bash agent_dir/spike/verdict.sh` runs every step
+and captures the golden set last (`step_landstrip_golden`, probe
+`agent_dir/spike/25-landstrip-golden.sh`), writing `expectations/landstrip.tsv`
+and the sanitized `docs/evidence/m1-*/capture/`. It cannot be automated from an
+agent session: `landstrip run` and `landstrip check` clone namespaces, which the
+agent's own sandbox refuses. The step fails rather than records when every D
+case allowed — such a capture would prove the deny rule inert, not the engine —
+and it fails a deny whose engine record does not name the probed path.
+
+The first capture (2026-11-25 14:30) was withdrawn: D1 and D3 were `deny` because
+the case scripts' own `/dev/null` redirect was denied, so neither case ran the
+operation it names, and the case scripts no longer redirect there. D2 came back
+`deny` — the reported 0.20 append bug did not reproduce on 0.20.29 — so the
+predicted `allow` in `design.md:95` was corrected against the record. Re-run
+`bash agent_dir/spike/verdict.sh` to produce the rows and the capture.
+
+Captured 2026-11-25 14:34 (`agent_dir/spike/logs/verdict-20261125-143439`):
+D1, D2 and D3 all `deny`, each with a denial record naming `<scratch>/secret`,
+so the rows in `expectations/landstrip.tsv` now measure the rule each case names.
+D2 stays `deny` — the earlier "0.20 allowed the append" report did not reproduce.
+
 ### M2 — canonical kernel-band witness (machine; after any P0)
 
 Pedigree check plus the 6.8 band witness: `bash tools/setup/03-smoke.sh
@@ -255,7 +280,7 @@ Update status to `doing`, `blocked (reason)`, `done (evidence link)` or
 | order | env | depends on | status | evidence |
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
-| M1 golden + evidence handover | machine | none | todo | |
+| M1 golden + evidence handover | machine | none | done | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
 | P1 provable claims | vm | M1 | todo | |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |

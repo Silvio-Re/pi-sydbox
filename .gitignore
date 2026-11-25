@@ -4,6 +4,9 @@ agent_dir/
 corpus/out/
 AGENTS.md
 *.log
+# Evidence is the one place a log file must be tracked: docs/evidence/ holds the
+# runs a fresh clone has to be able to open (see docs/evidence/README.md).
+!docs/evidence/**/*.log
 *.tmp
 .opt/
 .DS_Store
