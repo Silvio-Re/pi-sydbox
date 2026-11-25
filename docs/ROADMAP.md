@@ -253,14 +253,19 @@ D1, D2 and D3 all `deny`, each with a denial record naming `<scratch>/secret`,
 so the rows in `expectations/landstrip.tsv` now measure the rule each case names.
 D2 stays `deny` — the earlier "0.20 allowed the append" report did not reproduce.
 
-### M2 — canonical kernel-band witness (machine; after any P0)
+### M2 — canonical kernel-band witness (machine; FOLDED into M6)
 
-Pedigree check plus the 6.8 band witness: `bash tools/setup/03-smoke.sh
-~/.local/opt/syd-3.59.0/syd` in a plain terminal, then a full corpus run;
-commit the results labeled canonical (kernel 6.8, pinned engine). Verify
-`~/.local/opt/syd.lock` matches `syd.lock` (paths and sha256).
+Folded 2026-11-25 to keep machine work to the strict necessary: this is
+minutes of scripted plain-terminal work, M6's 4b step already re-runs the D
+corpus green on the same 6.8 machine, and nothing on the board depends on
+this row. No standalone machine session; the tasks ride the first machine
+session that reaches a plain terminal (the soak can take them early, M6 4b
+is the deadline): pedigree check via `bash tools/setup/03-smoke.sh
+~/.local/opt/syd-3.59.0/syd`, a full corpus run committed labeled canonical
+(kernel 6.8, pinned engine), and the `~/.local/opt/syd.lock` vs `syd.lock`
+diff (paths and sha256).
 
-### M3 — pi-web auto-deny confirmation (machine; after P0.1)
+### M3 — pi-web auto-deny confirmation (machine; FOLDED into M5)
 
 Launch the daily pi-web, trigger one denial via a bash call, leave the
 prompt unanswered, and observe the auto-deny (countdown if rendered).
@@ -268,24 +273,31 @@ Record the observed value in `docs/environment.md`; if the browser layer
 diverges from the headless measurement, file it as a bug, not a doc
 update.
 
+Folded 2026-11-25 to keep machine work to the strict necessary: the soak
+(M5) already must verify pi-web auto-deny (definition of done item 3), so
+a standalone session duplicates it, and nothing on the board depends on
+this row. The task above rides the soak session unchanged.
+
 ## Sequencing
 
 Legend: lane-code P0 -> P2 -> P3; lane-evidence M1 -> P1 -> P1 gate ->
-P3 README links; M2 any time after P0.
+P3 README links.
 
 - M1 first of all machine work (hard deadline, blocks P1's gate).
 - P0 starts immediately and in parallel with M1; it needs nothing.
 - P1 waits only on M1's files; P2 waits on P0 (0.1 feeds 2.1).
 - P3 waits on the P1 gate (README links evidence that exists) and P2.2
   (the support matrix it points to).
-- M3 after P0.1; M2 any time after P0; M4/M5 after P3 (setup + README);
+- M2 and M3 folded into M6 and M5 respectively (no standalone machine
+  sessions); M4/M5 after P3 (setup + README);
   M6 after M4; M7 last (destroying the golden source M1 preserved).
 - Critical path: M1 and P0 in parallel, then P1, P3, M4-M7 soak, P5.
 
 ## Ledger
 
 Update status to `doing`, `blocked (reason)`, `done (evidence link)` or
-`failed (reason)`. One row per order. Do not reorder rows.
+`failed (reason)`. `folded (into <order>)` closes an order whose tasks were
+merged into another order's session. One row per order. Do not reorder rows.
 
 | order | env | depends on | status | evidence |
 | --- | --- | --- | --- | --- |
@@ -294,8 +306,8 @@ Update status to `doing`, `blocked (reason)`, `done (evidence link)` or
 | P1 provable claims | vm | M1 | todo | |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
-| M2 kernel-band witness | machine | P0 | todo | |
-| M3 pi-web auto-deny confirm | machine | P0.1 | todo | |
+| M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
+| M3 pi-web auto-deny confirm | machine | P0.1 | folded (into M5) | tasks listed in its order text |
 | M4 flip drills | machine | P3 | todo | |
 | M5 soak | machine | M4, P0.1 | todo | |
 | M6 AppArmor + reboot + rollback | machine | M4 | todo | |
