@@ -27,6 +27,10 @@ if ! mkdir -p "$prefix" 2>/dev/null; then
   printf 'note: %s not writable, using %s\n' "$(dirname "$prefix")" "$prefix" >&2
 fi
 
+# created up front: the gperf section writes into $workdir long before the
+# libseccomp fetch below did, and curl cannot open its output in a missing
+# directory (run 45710973356, all three mirrors, write error after first bytes)
+mkdir -p "$workdir"
 tools="$workdir/tools"
 if ! command -v gperf >/dev/null 2>&1 && [ ! -x "$tools/bin/gperf" ]; then
   printf '== gperf %s (build-time tool) ==\n' "$gperf_version"
