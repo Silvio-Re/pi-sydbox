@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import activate, { initialLogOffset, newDenials, resolveEngine, shellQuote, wrapCommand, stateLayout } from "../src/index.ts";
+import activate, { initialLogOffset, LockedEngineError, newDenials, resolveEngine, shellQuote, wrapCommand, stateLayout } from "../src/index.ts";
 import { PROMPT_BUDGET } from "../src/dialog.ts";
 
 const FIXTURE = new URL("./fixtures/syd-3.59.0-access-deny.jsonl", import.meta.url).pathname;
@@ -22,8 +22,27 @@ test("the wrapped command keeps the tool's bash -c semantics and logs to a file"
     logPath: "/work/syd.log",
     profile: "include_profile linux\nsandbox/lock:off\n",
   });
-  assert.match(wrapped, /^exec 3>>'\/work\/syd\.log'; SYD_LOG_FD=3 /);
+  assert.match(wrapped, /^exec 3>>'\/work\/syd\.log'; python3 -c 'import os; os\.set_inheritable\(3, False\)' \|\| exit 126; SYD_LOG_FD=3 /);
   assert.match(wrapped, /'\/opt\/syd' '-P' '\/work\/profiles\/sydbox\.syd-3' '--' '\/bin\/bash' '-c' 'rm -rf \.\/build'$/);
+});
+
+test("the record fd is close-on-exec and helper failure is fail-closed", () => {
+  const w = wrapCommand("true", {
+    sydPath: "/opt/syd",
+    profilePath: "/work/p.syd-3",
+    logPath: "/work/syd.log",
+    profile: "include_profile linux\nsandbox/lock:off\n",
+  });
+  // S1 (external review): without CLOEXEC the workload inherits fd 3 and
+  // write(2) on numeric fds is unmediated — a forge channel into the grant
+  // dialogs. The helper must sit between open and launch; its failure must
+  // refuse the run (126) rather than sinkless / forgeable execution.
+  assert.ok(w.includes("os.set_inheritable(3, False)"), "marks fd 3 close-on-exec");
+  assert.ok(w.includes("|| exit 126;"), "helper failure refuses the run");
+  const open = w.indexOf("/work/syd.log");
+  const helper = w.indexOf("set_inheritable");
+  const engine = w.indexOf("'/opt/syd'");
+  assert.ok(open !== -1 && helper !== -1 && engine !== -1 && open < helper && helper < engine, "open, mark CLOEXEC, then launch");
 });
 
 test("a profile that breaks the namespace invariant is refused at wrap time", () => {
@@ -88,8 +107,52 @@ test("stateLayout is per-project and outside the workspace by default", () => {
 
 test("an explicit engine path is used only when it is executable", () => {
   assert.equal(resolveEngine({ SYD_PATH: "/bin/sh" }), "/bin/sh");
-  const bogus = resolveEngine({ SYD_PATH: "/nonexistent/syd" });
-  assert.ok(bogus === null || bogus.startsWith("/"), "falls back to a scan, never to a bad path");
+  const env = { SYD_PATH: "/nonexistent/syd", PI_SYDBOX_LOCK: join("/nonexistent", "tree", "syd.lock") };
+  const bogus = resolveEngine(env);
+  // With no readable lock, the resolver scans the machine: on a host with an
+  // installed engine that is a path, on a bare host it is null — never the
+  // bad explicit path.
+  assert.ok(bogus === null || bogus !== "/nonexistent/syd", "falls back to a scan, never to a bad path");
+});
+
+test("C5: a machine lock naming a missing engine refuses instead of scanning to a newer one", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sydbox-lock-"));
+  const lock = join(dir, "syd.lock");
+  // Exactly the shape a machine setup records — and a future uninstall breaks.
+  writeFileSync(lock, JSON.stringify({ sourceBuild: { installedPath: join(dir, "gone", "syd") } }));
+  const explicit = join(dir, "engine", "syd");
+  mkdirSync(join(dir, "engine"), { recursive: true });
+  writeFileSync(explicit, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+  // The explicit override still wins before the lock is even read.
+  assert.equal(resolveEngine({ SYD_PATH: explicit, PI_SYDBOX_LOCK: lock }), explicit);
+
+  let refused: unknown;
+  try {
+    resolveEngine({ PI_SYDBOX_LOCK: lock });
+    assert.fail("a broken pin must refuse, never fall back to the version scan");
+  } catch (err) {
+    refused = err;
+  }
+  assert.ok(refused instanceof LockedEngineError, "the refusal is the lock error, not a scan result");
+  const lockError = refused as LockedEngineError;
+  assert.equal(lockError.lockPath, lock);
+  assert.match(lockError.message, /refusing to run bash with an unvalidated engine/);
+
+  // end-to-end: the refusal reaches the tool_call blocker and names the lock.
+  const handlers = new Map<string, Handler>();
+  activate({ on: (name: string, handler: Handler) => { handlers.set(name, handler); return () => {}; } } as never);
+  process.env.PI_SYDBOX_LOCK = lock;
+  delete process.env.SYD_PATH;
+  try {
+    const blocked = (await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, { cwd: dir })) as
+      | { block?: boolean; reason?: string }
+      | undefined;
+    assert.equal(blocked?.block, true);
+    assert.ok(blocked?.reason?.includes(lock), "the block names the lock that pinned it");
+  } finally {
+    delete process.env.PI_SYDBOX_LOCK;
+  }
 });
 
 type Handler = (event: unknown, ctx?: unknown) => unknown;
@@ -246,5 +309,93 @@ test("user_bash is gated: it wraps or refuses, never falls through", async () =>
     } else {
       assert.equal(shaped.result?.exitCode, 126, "a refusal is recorded as a result, nothing runs");
     }
+  });
+});
+
+test("initialLogOffset counts UTF-16 units, not bytes (C1)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sydbox-off-"));
+  const log = join(dir, "records.jsonl");
+  // A record with multibyte content: byte size and string length disagree.
+  const line = JSON.stringify({ path: "déjà-vu.txt", cap: "read", act: "deny" });
+  writeFileSync(log, `${line}\n`);
+  const text = readFileSync(log, "utf8");
+  assert.ok(Buffer.byteLength(line) > line.length, "sanity: multibyte present");
+  assert.equal(initialLogOffset(log), text.length);
+  // The seed must behave like newDenials' slice index: from it, the whole
+  // file is "history" and a later call reports only what was appended after.
+  assert.deepEqual(newDenials(text, initialLogOffset(log)).records, []);
+});
+
+test("an allow-once grant feeds exactly one spawn and can prompt again (C2)", async () => {
+  await wiring(async (dir, handlers) => {
+    const ui = new UiProbe("Allow once");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    const first = { command: "echo hi" };
+    await handlers.get("tool_call")?.({ toolName: "bash", input: first }, ctx);
+    const profilePath = /'([^']+\.syd-3)'/.exec(String(first.command))?.[1];
+    assert.ok(profilePath, "sanity: wrapped with a profile path");
+
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    const line = JSON.stringify({ ctx: "pid:1", cap: "read", act: "deny", sys: "openat", path: "/work/once.txt" });
+    writeFileSync(layout.logPath, `${line}\n`);
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.match(readFileSync(profilePath!, "utf8"), /allow\/[a-z,]+\+\/work\/once\.txt/, "grant is compiled for the next spawn");
+
+    // That spawn consumes the mandate: the file still carries the rule NOW
+    // (it feeds this very child), and the NEXT call recompiles clean.
+    const second = { command: "echo there" };
+    await handlers.get("tool_call")?.({ toolName: "bash", input: second }, ctx);
+    assert.match(readFileSync(profilePath!, "utf8"), /once\.txt/, "the spawn the grant feeds is still granted");
+    const third = { command: "echo again" };
+    await handlers.get("tool_call")?.({ toolName: "bash", input: third }, ctx);
+    assert.doesNotMatch(readFileSync(profilePath!, "utf8"), /once\.txt/, "after the granted spawn the next recompile is clean");
+
+    // The lapsed rule must be able to prompt again, not be swallowed by a
+    // dedupe that remembers the expired grant.
+    const again = JSON.stringify({ ctx: "pid:2", cap: "read", act: "deny", sys: "openat", path: "/work/once.txt" });
+    appendFileSync(layout.logPath, `${again}\n`);
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.ok(ui.selectCalls.length >= 2, "a lapsed once-grant prompts again");
+    assert.equal(existsSync(layout.projectGrants), false, "once never touches the project store");
+  });
+});
+
+test("a sandbox.json deny is reported as a policy deny, not offered as a grant (S3)", async () => {
+  await wiring(async (dir, handlers) => {
+    // The policy is read once at first state creation: it must exist before
+    // the first call.
+    writeFileSync(join(dir, "sandbox.json"), JSON.stringify({ filesystem: { denyWrite: ["/work/locked-area"] } }));
+    const ui = new UiProbe("Allow for this session");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+
+    await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    const line = JSON.stringify({ ctx: "pid:1", cap: "create", act: "deny", sys: "mknod", path: "/work/locked-area/new.txt" });
+    writeFileSync(layout.logPath, `${line}\n`);
+
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.equal(ui.selectCalls.length, 0, "a policy deny must never reach the grant tiers");
+    assert.match(ui.notes.join("|"), /policy deny \(sandbox\.json\)/, "the dialog says where the deny comes from");
+    assert.equal(existsSync(layout.projectGrants), false, "no dead grant is persisted");
+  });
+});
+
+test("unrecognised log lines are counted and reported, not swallowed (D3)", async () => {
+  await wiring(async (dir, handlers) => {
+    const ui = new UiProbe("Deny");
+    const ctx = { cwd: dir, ui: { select: ui.select, notify: ui.notify } };
+    await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "echo hi" } }, ctx);
+
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    const line = JSON.stringify({ ctx: "pid:1", cap: "read", act: "deny", sys: "openat", path: "/work/data.txt" });
+    writeFileSync(layout.logPath, `not-a-record\n${line}\n{"garbled":\n`);
+
+    await handlers.get("tool_result")?.({}, ctx);
+    assert.equal(ui.selectCalls.length, 1, "the real denial still prompts");
+    assert.match(ui.notes.join("|"), /2 log line\(s\) not recognised/, "drift is visible to the operator");
   });
 });

@@ -39,9 +39,16 @@ export class PolicyError extends Error {}
 const UNSHARE = /(?:^|[\s;])unshare\/([A-Za-z,]+)\s*:\s*([01])/g;
 const BIND = /(?:^|[\s;])bind(?:\+[^\s:]*)?\s*:/;
 
-/** Category lists, named after the engine's own vocabulary. */
-export const READ_CATS = "lpath,npath,rpath";
-export const WRITE_CATS = "lpath,npath,rpath,wpath,cpath,tpath";
+/**
+ * Category lists, named after the engine's own vocabulary. `readdir` and
+ * `fattr` are engine cats too (rule form `deny/readdir+…`, `allow/fattr+…`, in
+ * 3.59.0 config.rs): listing a directory is reading it, and attribute writes
+ * (chmod/utimes family) are writes. Leaving them out made `ls` inside an
+ * allowed tree deniable with a grant the mapper could not name — the dialog
+ * hole an external review called C4.
+ */
+export const READ_CATS = "lpath,npath,rpath,readdir";
+export const WRITE_CATS = "lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr";
 export const EXEC_CATS = "lpath,npath,rpath,exec";
 
 /**
@@ -74,11 +81,19 @@ function pushRules(lines: string[], action: "allow" | "deny", cats: string, path
   for (const path of paths ?? []) for (const line of rule(action, cats, path)) lines.push(line);
 }
 
-/** `host:port` in the policy, `host!port` in syd's network rules. */
-function netRule(entry: string): string {
-  const at = entry.lastIndexOf(":");
-  if (at <= 0) return `allow/net/connect+${entry}`;
-  return `allow/net/connect+${entry.slice(0, at)}!${entry.slice(at + 1)}`;
+/**
+ * `host:port` in a policy entry, `host!port` in syd's network rules — but one
+ * truth table for both directions (external-review C3: the compiler used to
+ * take the last colon of every entry, corrupting a bare IPv6 literal `::1`
+ * into `:!1`; the mapper's stricter guard was right, so it is now THE rule).
+ * Conversion happens only when the entry is a single-colon `host:port` or a
+ * bracketed `[v6]:port`; a bare IPv6 literal, an engine-logged `host!port`,
+ * or a unix socket path passes through verbatim.
+ */
+export function netRule(addr: string): string {
+  const m = /^(\[[^\]]*\]|[^:]+):([0-9]+)$/.exec(addr);
+  if (m) return `allow/net/connect+${m[1]}!${m[2]}`;
+  return `allow/net/connect+${addr}`;
 }
 
 /** Returns human-readable violations of the ADR 0001 variant. Empty = clean. */

@@ -9,7 +9,7 @@
  * path the engine has already named and never a guess.
  */
 
-import { EXEC_CATS, READ_CATS, WRITE_CATS, normalizePath } from "./compiler.ts";
+import { EXEC_CATS, READ_CATS, WRITE_CATS, netRule, normalizePath } from "./compiler.ts";
 import type { AnyRecord } from "./records.ts";
 
 export interface Grant {
@@ -17,15 +17,20 @@ export interface Grant {
   rule: string;
 }
 
-/** Engine caps (the `cap` field) mapped onto the category lists. */
+/** Engine caps (the `cap` field) mapped onto the category lists. readdir and
+ * fattr are engine caps with their own rule cats; without these rows a denial
+ * raised through them produced a null grant — unpromptable, unfixable at
+ * runtime (external-review C4). */
 const CAP_CATS: Readonly<Record<string, string>> = Object.freeze({
   read: READ_CATS,
   stat: READ_CATS,
   open: READ_CATS,
+  readdir: READ_CATS,
   write: WRITE_CATS,
   create: WRITE_CATS,
   truncate: WRITE_CATS,
   append: WRITE_CATS,
+  fattr: WRITE_CATS,
   exec: EXEC_CATS,
 });
 
@@ -40,17 +45,12 @@ export const DENIALS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The engine's recorded addr is already `host!port`; a `:` is only seen in a
- * hand-written policy entry, so it converts there and passes captured addrs
- * through verbatim (a blanket `:`→`!` rewrite would corrupt IPv6).
+ * The net truth table lives in compiler.ts `netRule` (one rule for policy
+ * entries and captured addrs alike): a `host:port` shape converts to the
+ * engine's bang form, everything else — an engine-logged `host!port`, a bare
+ * IPv6 literal, a unix socket path — passes through verbatim; a blanket
+ * `:`→`!` rewrite would corrupt IPv6.
  */
-function netRule(addr: string): string {
-  if (/^[^:]+:[0-9]+$/.test(addr)) {
-    const at = addr.lastIndexOf(":");
-    return `allow/net/connect+${addr.slice(0, at)}!${addr.slice(at + 1)}`;
-  }
-  return `allow/net/connect+${addr}`;
-}
 
 /**
  * Returns the narrowest grant that would have let the record through, or null

@@ -25,8 +25,10 @@ hardened state, which syd does not need.
    `~/.pi/agent/npm/node_modules/pi-landstrip/dist/index.ts`, not from memory.
 7. Engine absent, unreadable or failing its self-check => bash and worker tools
    refuse to start. Never silently unsandboxed.
-8. Violation records are schema-validated; unknown or missing fields abort the
-   session rather than being skipped.
+8. Violation records are schema-validated; unknown or missing fields are
+   skipped toward deny and reported, never interpreted — and no parse
+   outcome can weaken a deny. (A probe run treats the same drift as an
+   abort — see "Abort conditions".)
 
 ## Environment (verified 2026-11-23)
 

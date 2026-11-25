@@ -203,7 +203,7 @@ test("fsAllowFor lines ride extraAllows and never follow a deny of a compiled pr
   const denyIdx = profile.indexOf("deny/");
   assert.ok(fsIdx > -1, "fs allow line missing");
   assert.ok(
-    profile.includes("allow/lpath,npath,rpath,wpath,cpath,tpath+/media/sf_doc/probe\n"),
+    profile.includes("allow/lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr+/media/sf_doc/probe\n"),
     "path allow must be emitted for the write target",
   );
   assert.ok(denyIdx > fsIdx, "deny must come after the fs allow");

@@ -45,7 +45,7 @@ test("compileProfile puts denies last so they win", () => {
   const lastAllow = lines.findLastIndex((l) => l.startsWith("allow/"));
   const deny = lines.findIndex((l) => l.startsWith("deny/"));
   assert.ok(lastAllow < deny, `deny must follow every allow:\n${profile}`);
-  assert.ok(lines.includes("deny/lpath,npath,rpath+/work/secret/***"), `deny must cover the subtree:\n${profile}`);
+  assert.ok(lines.includes("deny/lpath,npath,rpath,readdir+/work/secret/***"), `deny must cover the subtree:\n${profile}`);
 });
 
 test("compileProfile maps each policy field onto the engine vocabulary", () => {
@@ -62,14 +62,14 @@ test("compileProfile maps each policy field onto the engine vocabulary", () => {
     },
     "A",
   );
-  assert.match(profile, /^allow\/lpath,npath,rpath\+\/\*\*\*$/m);
-  assert.match(profile, /^allow\/lpath,npath,rpath\+\/data\/\*\*\*$/m);
-  assert.match(profile, /^allow\/lpath,npath,rpath,wpath,cpath,tpath\+\/work\/\*\*\*$/m);
+  assert.match(profile, /^allow\/lpath,npath,rpath,readdir\+\/\*\*\*$/m);
+  assert.match(profile, /^allow\/lpath,npath,rpath,readdir\+\/data\/\*\*\*$/m);
+  assert.match(profile, /^allow\/lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr\+\/work\/\*\*\*$/m);
   assert.match(profile, /^allow\/lpath,npath,rpath,exec\+\/work\/\*\*\*$/m);
   assert.match(profile, /^allow\/net\/connect\+example\.com!443$/m);
   assert.match(profile, /^allow\/net\/connect\+localhost$/m);
-  assert.match(profile, /^deny\/lpath,npath,rpath\+\/home\/x\/\.ssh\/\*\*\*$/m);
-  assert.match(profile, /^deny\/lpath,npath,rpath,wpath,cpath,tpath\+\/work\/locked\/\*\*\*$/m);
+  assert.match(profile, /^deny\/lpath,npath,rpath,readdir\+\/home\/x\/\.ssh\/\*\*\*$/m);
+  assert.match(profile, /^deny\/lpath,npath,rpath,readdir,wpath,cpath,tpath,fattr\+\/work\/locked\/\*\*\*$/m);
 });
 
 test("a disabled sandbox turns the engine off rather than emitting nothing", () => {

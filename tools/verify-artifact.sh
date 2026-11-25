@@ -9,7 +9,8 @@
 #
 # The release is minisign, not OpenPGP: `gpg --verify` cannot succeed on it
 # and no .sha512sum sidecar exists (verified against distfiles, see syd.lock
-# notes). Signature checks go through agent_dir/spike/minisign_verify.py.
+# notes). Signature checks go through tools/minisign-verify.py (vendored: a
+# fresh clone is self-contained; agent_dir/ is gitignored by design).
 #
 # Exit: 0 verified (fresh download or cache hit; a missing cached signature is
 # reported as a gap, not a failure), 3 network unavailable and no usable cache
@@ -36,7 +37,7 @@ Fill url, sha512, signingKey.source/.fingerprint in phase 0.5, verify with:
   curl -fsSLO "$url"          # artifact
   curl -fsSLO "$url.sig"      # detached minisign signature (no .sha512sum sidecar exists)
   curl -fsSLO "$keysrc"       # public key, served by the upstream repository over TLS
-  python3 agent_dir/spike/minisign_verify.py "$(basename "$keysrc")" "$(basename "$url").sig" "$(basename "$url")"
+  python3 tools/minisign-verify.py "$(basename "$keysrc")" "$(basename "$url").sig" "$(basename "$url")"
   sha512sum "$(basename "$url")"   # must equal syd.lock's sha512
 
 then set status=verified. This script never downloads a placeholder pin.
@@ -50,7 +51,7 @@ name="$(basename "$url")"
 cached="$cache/$name"
 sig="$cache/$name.sig"
 pub="$cache/$(basename "$keysrc")"
-verifier="agent_dir/spike/minisign_verify.py"
+verifier="tools/minisign-verify.py"
 
 sha_ok() { # sha_ok <file> — a mismatch is a tamper alarm
   local got
@@ -66,6 +67,12 @@ sha_ok() { # sha_ok <file> — a mismatch is a tamper alarm
 sig_ok() { # sig_ok <file>
   if [ ! -f "$sig" ] || [ ! -f "$pub" ]; then
     echo "signature not checked online-unavailable files: ${sig} ${pub}" >&2
+    return 2
+  fi
+  # D1 (external review): a missing verifier is a tooling gap, not tamper
+  # evidence. Missing files must never be reported as a failed check.
+  if [ ! -f "$verifier" ]; then
+    echo "signature not checked: $verifier missing" >&2
     return 2
   fi
   if ! python3 "$verifier" "$pub" "$sig" "$1"; then
