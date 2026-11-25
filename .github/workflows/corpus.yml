@@ -99,16 +99,19 @@ jobs:
           mkdir -p "$(dirname "$dest")"
           if compgen -G "$run_dir/*" > /dev/null; then
             mode="run"
-            bash tools/sanitize-evidence.sh "$run_dir" "$dest/run"
+            bash tools/sanitize-evidence.sh "$run_dir" "$dest"
+            mv "$dest/$(basename "$run_dir")" "$dest/run"
           elif compgen -G "/tmp/pi-sydbox-build/*.log" > /dev/null \
             || compgen -G "$RUNNER_TEMP/step-*.txt" > /dev/null; then
             mode="build-failure"
             mkdir -p "$dest/build-failure"
+            # sanitize-evidence.sh takes DEST as a directory and writes the
+            # file's basename into it
             for f in /tmp/pi-sydbox-build/*.log; do
-              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure/$(basename "$f")"
+              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure"
             done
             for f in "$RUNNER_TEMP"/step-*.txt; do
-              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure/$(basename "$f")"
+              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure"
             done
           else
             printf 'nothing survived to publish\n'; exit 0

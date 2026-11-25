@@ -32,8 +32,28 @@ if ! command -v gperf >/dev/null 2>&1 && [ ! -x "$tools/bin/gperf" ]; then
   printf '== gperf %s (build-time tool) ==\n' "$gperf_version"
   gtar="$workdir/gperf-$gperf_version.tar.gz"
   if [ ! -f "$gtar" ]; then
-    gurl="https://ftpmirror.gnu.org/gperf/gperf-$gperf_version.tar.gz"
-    curl -fsSL -o "$gtar.part" "$gurl" || { echo "fetch failed: $gurl" >&2; exit 1; }
+    # Ordered mirror list with connect timeouts: ftpmirror.gnu.org's redirect
+    # can land on a host CI runners cannot reach (2026-11-25, GitHub runner
+    # stuck 133 s on mirrors.kernel.org then exiting 1; evidence
+    # docs/evidence/p1-runner-45710211881/). ftp.gnu.org first, the
+    # redirector last, and the pinned sha256 is checked regardless of source.
+    gperf_sha256="588546b945bba4b70b6a3a616e80b4ab466e3f33024a352fc2198112cdbb3ae2"
+    ok=""
+    for gurl in \
+      "https://ftp.gnu.org/gnu/gperf/gperf-$gperf_version.tar.gz" \
+      "https://mirrors.kernel.org/gnu/gperf/gperf-$gperf_version.tar.gz" \
+      "https://ftpmirror.gnu.org/gperf/gperf-$gperf_version.tar.gz"; do
+      printf 'fetch %s\n' "$gurl"
+      rm -f "$gtar.part"
+      if curl --connect-timeout 20 --retry 1 -fsSL -o "$gtar.part" "$gurl"; then ok=1; break; fi
+    done
+    if [ -z "$ok" ]; then
+      echo 'gperf fetch failed on every mirror' >&2; exit 1
+    fi
+    sha="$(sha256sum "$gtar.part" | awk '{print $1}')"
+    if [ "$sha" != "$gperf_sha256" ]; then
+      echo "gperf sha256 mismatch: $sha (expected $gperf_sha256)" >&2; exit 1
+    fi
     mv "$gtar.part" "$gtar"
   fi
   rm -rf "$workdir/gperf-$gperf_version"
