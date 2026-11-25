@@ -19,6 +19,10 @@
 # --notes    directory holding the case scripts, default: corpus/d; the note
 #            column is the case script's own header summary line, so the note
 #            cannot drift from the probe it describes
+# --run      run directory of the capture (next to summary.tsv): when given,
+#            a deny is refused as a row unless that case's log holds an
+#            engine record naming one of the case's declared probe paths
+#            (tools/case-integrity.sh; the M1 /dev/null lesson)
 # --out      write to this file instead of standard output
 set -euo pipefail
 
@@ -31,11 +35,12 @@ engine=""
 version=""
 date_str="$(date +%F)"
 notes_dir="$repo_root/corpus/d"
+run_dir=""
 out=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --summary|--engine|--version|--date|--notes|--out)
+    --summary|--engine|--version|--date|--notes|--run|--out)
       if [ "$#" -lt 2 ]; then printf 'missing value for %s\n' "$1" >&2; exit 2; fi
       case "$1" in
         --summary) summary="$2" ;;
@@ -43,6 +48,7 @@ while [ "$#" -gt 0 ]; do
         --version) version="$2" ;;
         --date) date_str="$2" ;;
         --notes) notes_dir="$2" ;;
+        --run) run_dir="$2" ;;
         --out) out="$2" ;;
       esac
       shift 2
@@ -79,6 +85,14 @@ note_for() {
        NF { exit }' "$script"
 }
 
+if [ -n "$run_dir" ]; then
+  # Deny rows are checked against the run's logs: the shared case-integrity
+  # rules live in one place for this script and tools/gate.sh.
+  # shellcheck source=tools/case-integrity.sh
+  source "$repo_root/tools/case-integrity.sh"
+  ci_load_case_env "$run_dir"
+fi
+
 tmp="$(mktemp "${TMPDIR:-/tmp}/golden-tsv.XXXXXX")"
 trap 'rm -f -- "$tmp"' EXIT
 printf 'case\tengine\tversion\tverdict\tdate\tnote\n' > "$tmp"
@@ -96,6 +110,9 @@ while IFS= read -r line; do
   result="${rest#*$'\t'}"
   [ -n "$case_name" ] || continue
   [ "$case_name" = case ] && continue     # the capture's own header line
+  # corpus/p cases are deliberate policy probes and are never part of the
+  # golden set (corpus/p/README.md); a summary that ran them just skips them.
+  [ -f "$repo_root/corpus/p/$case_name.sh" ] && continue
   case "$result" in
     allow|deny|prompt) ;;
     *)
@@ -110,6 +127,17 @@ while IFS= read -r line; do
     bad=1
     continue
   fi
+  # Case integrity: a deny row must carry its engine record. Without --run
+  # there is no log to check and the row is recorded as before (the option
+  # is what `make capture` passes).
+  if [ "$verdict" = "deny" ] && [ -n "$run_dir" ]; then
+    if ! ci_deny_backed "$case_name" "$notes_dir/$case_name.sh" \
+                        "$run_dir/$case_name.log"; then
+      printf 'refusing to record %s: deny without a backing record\n' "$case_name" >&2
+      bad=1
+      continue
+    fi
+  fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$case_name" "$engine" "$version" "$verdict" "$date_str" \
     "$(note_for "$case_name" "$notes_dir/$case_name.sh")" >> "$tmp"
@@ -118,7 +146,7 @@ done < "$summary"
 unset line rest case_name verdict result
 
 if [ "$bad" -ne 0 ]; then
-  printf 'golden set not written: %d case(s) unclassified\n' "$bad" >&2
+  printf 'golden set not written: %d case(s) unclassified or unbacked\n' "$bad" >&2
   exit 1
 fi
 if [ "$rows" -eq 0 ]; then
