@@ -1,0 +1,63 @@
+name: corpus
+
+# Runner evidence for order P1 (docs/ROADMAP.md): build the pinned engine on
+# the CI runner with the repo's own scripts, run the whole corpus, gate the
+# run, and upload the run directory. workflow_dispatch only (deliberate: the
+# build costs minutes and nobody wants it on every push). The workflow must
+# exist on the default branch to be dispatchable; a dispatched run selects
+# the branch to build from.
+on:
+  workflow_dispatch
+
+# Least privilege, like ci.yml: nothing here writes to the repository. The
+# evidence leaves as a workflow artifact; committing it to docs/evidence/ is
+# a separate human-reviewed step on the order branch.
+permissions:
+  contents: read
+
+env:
+  # From syd.lock, unchanged: tag v3.59.0 is commit 7e602aaf... on
+  # gitlab.exherbo.org/sydbox/sydbox.git, and the binary sha256 recorded in
+  # the lock is checked in the build record.
+  SYD_VERSION: "3.59.0"
+  SYD_COMMIT: "7e602aaff043121842754002f904694a5e2ed431"
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: toolchain (engine source build prerequisites)
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libseccomp-dev xz-utils
+      - name: rust toolchain (floor 1.88, per the engine workspace's rust-version)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustc" --version
+      - name: libseccomp 2.6.0 (source; apt's 2.5.5 cannot link the engine)
+        run: bash tools/setup/build-libseccomp.sh 2.6.0
+      - name: engine 3.59.0 at the pinned commit (syd.lock)
+        run: |
+          env PKG_CONFIG_PATH="$HOME/.local/opt/libseccomp-2.6.0/lib/pkgconfig" \
+              LIBSECCOMP_LIB_PATH="$HOME/.local/opt/libseccomp-2.6.0/lib" \
+              LIBSECCOMP_LINK_TYPE=static \
+              bash tools/setup/build-engine.sh "$SYD_VERSION" --commit "$SYD_COMMIT" | tee "$RUNNER_TEMP/syd-build.txt"
+      - name: corpus run
+        env:
+          RUNDIR: results/syd-runner
+        run: |
+          mkdir -p "$RUNDIR"
+          "$HOME/.local/opt/syd-$SYD_VERSION/syd" --version > "$RUNDIR/engine.txt"
+          uname -r > "$RUNDIR/uname.txt"
+          cp "$RUNNER_TEMP/syd-build.txt" "$RUNDIR/syd-build.txt"
+          make corpus LABEL=syd-runner PROFILE=corpus/profiles/syd-a.profile \
+               ENGINE='$HOME/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --'
+      - name: gate (equal-or-stricter vs expectations/, plus the probe-record rules)
+        run: make gate RESULTS=results/syd-runner/summary.tsv
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: corpus-syd-runner
+          path: results/syd-runner/
+          if-no-files-found: error
