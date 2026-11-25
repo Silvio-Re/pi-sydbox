@@ -241,11 +241,11 @@ agent's own sandbox refuses. The step fails rather than records when every D
 case allowed — such a capture would prove the deny rule inert, not the engine —
 and it fails a deny whose engine record does not name the probed path.
 
-The first capture (2026-11-25 14:30) was withdrawn: D1 and D3 were `deny` because
-the case scripts' own `/dev/null` redirect was denied, so neither case ran the
-operation it names, and the case scripts no longer redirect there. D2 came back
-`deny` — the reported 0.20 append bug did not reproduce on 0.20.29 — so the
-predicted `allow` in `design.md:95` was corrected against the record. Re-run
+The first capture (2026-11-25 14:30) was withdrawn: D1 and D3 were `deny`
+because the case scripts' own `/dev/null` redirect was denied, so neither case
+ran the operation it names, and the case scripts no longer redirect there. D2
+came back `deny` — the reported 0.20 append bug did not reproduce on 0.20.29 —
+so the predicted `allow` in `design.md:95` was corrected against the record. Re-run
 `bash agent_dir/spike/verdict.sh` to produce the rows and the capture.
 
 Captured 2026-11-25 14:34 (`agent_dir/spike/logs/verdict-20261125-143439`):
@@ -303,7 +303,7 @@ merged into another order's session. One row per order. Do not reorder rows.
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
-| P1 provable claims | vm | M1 | todo | |
+| P1 provable claims | vm | M1 | doing | |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
