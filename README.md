@@ -16,7 +16,7 @@ syd profile (path ACL with deny-first ordering, fstype allowlist for mounts the
 engine's fs guard does not know), places it on private storage (relocating off
 mode-inert filesystems), wraps the pi `bash` tool in the engine, parses the
 violation log, and turns each denial into an approval dialog with a stored
-grant. 95 unit tests; the deny corpus and the implemented end-to-end probes
+grant. 119 unit tests; the deny corpus and the implemented end-to-end probes
 (3 of the planned 14, corpus/d) run green
 against a pinned syd 3.59.0 built from source. Known constraint: launching
 the engine inside an outer bash sandbox asks one interactive approval per run

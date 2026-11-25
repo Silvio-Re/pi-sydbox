@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+- P0 fix the record (roadmap order P0; evidence
+  `docs/evidence/p0-auto-deny-20261125/`):
+  - The approval dialog now sends pi's actual dialog option, `timeout`
+    (pi-coding-agent 1.6.0 `ExtensionUIDialogOptions`). It used to send
+    `timeoutMs`, a key every mode ignores, so an unanswered deny prompt
+    blocked the session forever and `AUTO_DENY_MS` was dead config.
+    Measured headless: pi auto-resolves an unanswered select 120 070 ms
+    after the request when 120 000 is sent (harness:
+    `tools/rpc-dialog-probe/`). pi-web's browser-layer confirmation is
+    roadmap item M3.
+  - `KNOWN_FIELDS` covered the committed captures again: `fs`, `mode`,
+    `oflags`, `rflags` and `proto` added, and a new strict-mode test parses
+    every committed fixture line so the "captured" claim cannot drift.
+  - Empty-glob denial paths (`/`, `/*`, `/**`…) can no longer round-trip
+    into a blanket `allow/<cats>+/` grant: the mapper refuses them, and
+    the grant store refuses empty or root targets independently.
+  - The engine gate's self-check runs under a 10 s `spawnSync` timeout; a
+    hang is a failed check (blocked, named), never a pass.
+  - Record content (workload-chosen paths/addrs) can no longer forge
+    prompt or notification lines: it is JSON-quoted, truncated, and framed
+    by a constant line; line-break targets are refused outright instead
+    of reaching any user-visible surface or the compiled profile.
+  - A dual-spelling grant (bare + subtree rule) can now actually be
+    stored at the project and global tiers: `applyGrant` stores each
+    line, where the single-line store previously rejected the pair.
+  - Doc staleness: README test count (119), `design.md` store-schema
+    sentence, corpus `-P` engine examples (pinned 3.59.0 path),
+    `KNOWN_FIELDS_VERSION` wording, `design.md` opening engine pin.
 - Plan of record: `docs/ROADMAP.md` is the executable path from working
   adapter to a v1.0 usable by others from a fresh clone. Work is split
   into environment-bound orders (VM/CI agents vs the end-usage machine),

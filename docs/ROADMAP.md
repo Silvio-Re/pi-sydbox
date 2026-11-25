@@ -254,7 +254,7 @@ Update status to `doing`, `blocked (reason)`, `done (evidence link)` or
 
 | order | env | depends on | status | evidence |
 | --- | --- | --- | --- | --- |
-| P0 fix the record | vm | none | todo | |
+| P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | todo | |
 | P1 provable claims | vm | M1 | todo | |
 | P2 host contracts and drift automation | vm | P0 | todo | |

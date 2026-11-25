@@ -26,11 +26,11 @@ works).
 ```sh
 # variant A (no namespace options), phase 0.5 tentative profile
 bash corpus/run.sh --label syd-a --profile-template corpus/profiles/syd-a.profile \
-     --engine-cmd "/home/silvio/.local/opt/syd-3.60.0/syd -m \$PROFILE_FILE --"
+     --engine-cmd "/home/silvio/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --"
 
 # or through make
 make corpus LABEL=syd-a PROFILE=corpus/profiles/syd-a.profile \
-     ENGINE='/home/silvio/.local/opt/syd-3.60.0/syd -m $PROFILE_FILE --'
+     ENGINE='/home/silvio/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --'
 
 # landstrip baseline (legacy policy artifact, not a syd profile)
 corpus/run.sh --label landstrip --profile-template corpus/profiles/landstrip.json \
