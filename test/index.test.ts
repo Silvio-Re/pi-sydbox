@@ -22,7 +22,7 @@ test("the wrapped command keeps the tool's bash -c semantics and logs to a file"
     logPath: "/work/syd.log",
     profile: "include_profile linux\nsandbox/lock:off\n",
   });
-  assert.match(wrapped, /^SYD_LOG='\/work\/syd\.log' /);
+  assert.match(wrapped, /^exec 3>>'\/work\/syd\.log'; SYD_LOG_FD=3 /);
   assert.match(wrapped, /'\/opt\/syd' '-P' '\/work\/profiles\/sydbox\.syd-3' '--' '\/bin\/bash' '-c' 'rm -rf \.\/build'$/);
 });
 

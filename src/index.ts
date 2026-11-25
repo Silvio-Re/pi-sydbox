@@ -3,8 +3,12 @@
  *
  * Wraps bash tool calls in the engine. The wrapping string is the only control
  * surface the bash tool offers — it takes a command, not a process table — so
- * violation records are collected through SYD_LOG (a file path) rather than
- * SYD_LOG_FD, which would need the child's own descriptor table.
+ * violation records are collected on the descriptor named by SYD_LOG_FD —
+ * SYD_LOG is a level variable in the engine (log level words only, parsed
+ * by the engine's log/mod.rs), it has no file-path form, so the wrap command
+ * opens the append-mode log fd itself and the engine child inherits it
+ * (four-cell shape verified against syd 3.59.0: pi-shape and outer both carry
+ * records in append mode).
  *
  * Flow:
  *   tool_call   resolve the engine (env override, machine lock, then scan),
@@ -137,7 +141,10 @@ export function wrapCommand(command: string, options: WrapOptions): string {
     profilePath: options.profilePath,
     variant: "A",
   });
-  return `SYD_LOG=${shellQuote(options.logPath)} ${plan.command.map(shellQuote).join(" ")}`;
+  // Fail-safe trace of the fd decision: the wrap shell opens the log fd in
+  // append mode; SYD_LOG is documented in-engine as a level variable, and
+  // the record sink is the fd named by SYD_LOG_FD (probes 21/22).
+  return `exec 3>>${shellQuote(options.logPath)}; SYD_LOG_FD=3 ${plan.command.map(shellQuote).join(" ")}`;
 }
 
 /**
@@ -146,10 +153,16 @@ export function wrapCommand(command: string, options: WrapOptions): string {
  * is strictly worse news than a deny and must not vanish. Unparseable lines
  * advance the offset without becoming records: the engine may write notices
  * (level/msg) that are not violations, and a parse bug must not re-prompt the
- * user forever.
+ * user forever. The offset only ever moves past the last complete line: the
+ * file is append-mode shared with a running child, and a read can catch a
+ * half-written record — skipping its bytes would lose the record once the
+ * engine finishes the write.
  */
 export function newDenials(logText: string, offset: number): { records: AnyRecord[]; offset: number } {
-  const slice = logText.slice(offset);
+  let end = -1;
+  for (let i = logText.indexOf("\n", offset); i !== -1; i = logText.indexOf("\n", i + 1)) end = i;
+  if (end < offset) return { records: [], offset };
+  const slice = logText.slice(offset, end + 1);
   const records: AnyRecord[] = [];
   for (const line of slice.split("\n")) {
     if (line.trim() === "") continue;
@@ -161,7 +174,7 @@ export function newDenials(logText: string, offset: number): { records: AnyRecor
     }
     if (record !== null && DENIALS.has(record.act)) records.push(record);
   }
-  return { records, offset: logText.length };
+  return { records, offset: end + 1 };
 }
 
 /** Prompt text: what was denied, and the exact rule the engine suggests. */
