@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Plan of record: `docs/ROADMAP.md` is the executable path from working
+  adapter to a v1.0 usable by others from a fresh clone. Work is split
+  into environment-bound orders (VM/CI agents vs the end-usage machine),
+  each with tasks, a pass/fail gate and evidence requirements, plus a
+  dependency ordering and a status ledger. Machine orders mark the
+  landstrip golden-set capture (M1) as critical: it must be committed
+  before phase 4 decommissions landstrip, and `make gate` cannot enforce
+  equal-or-stricter without it. README layout updated.
 - H1 (external review 2): the sandbox policy is no longer read from inside
   the confined tree. `loadPolicy` used to pick up `<cwd>/sandbox.json` or
   `<cwd>/agent_dir/sandbox.json`, so a cloned repo could ship a policy that

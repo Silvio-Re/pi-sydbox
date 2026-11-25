@@ -51,7 +51,8 @@ src/            extension modules (compiler, launcher, records, mapper, dialog, 
 test/           unit tests, node --test, TypeScript stripped at runtime
 corpus/         probe cases, run.sh harness, engine profiles
 expectations/   recorded decisions (golden set)
-docs/           design.md, environment.md, decisions/, runbook-rollback.md
+docs/           design.md, environment.md, decisions/, runbook-rollback.md,
+                ROADMAP.md (plan of record to v1.0)
 tools/          verify-artifact.sh, weekly-check.sh, minisign-verify.py, syd-release.pub,
                 setup/ (build-libseccomp.sh, build-engine.sh, 03-smoke.sh, install.sh)
 syd.lock        version + checksum + minisign pin (syd 3.59.0)
