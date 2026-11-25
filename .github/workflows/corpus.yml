@@ -74,12 +74,13 @@ jobs:
         env:
           RUNDIR: results/syd-runner
         run: |
+          set -o pipefail
           mkdir -p "$RUNDIR"
           "$HOME/.local/opt/syd-$SYD_VERSION/syd" --version > "$RUNDIR/engine.txt"
           uname -r > "$RUNDIR/uname.txt"
           cp "$RUNNER_TEMP/step-engine.txt" "$RUNDIR/syd-build.txt"
           make corpus LABEL=syd-runner PROFILE=corpus/profiles/syd-a.profile \
-               ENGINE='$HOME/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --'
+               ENGINE='$HOME/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --' 2>&1 | tee "$RUNNER_TEMP/step-corpus.txt"
       - name: gate (equal-or-stricter vs expectations/, plus the probe-record rules)
         run: |
           set -o pipefail
@@ -97,24 +98,32 @@ jobs:
           dest="docs/evidence/p1-runner-$GITHUB_RUN_ID"
           run_dir="results/syd-runner"
           mkdir -p "$(dirname "$dest")"
-          if compgen -G "$run_dir/*" > /dev/null; then
+          if [ -f "$run_dir/summary.tsv" ]; then
+            # a real, complete run: the corpus classified every case and the
+            # gate step wrote its verdict into the run directory
             mode="run"
             bash tools/sanitize-evidence.sh "$run_dir" "$dest"
             mv "$dest/$(basename "$run_dir")" "$dest/run"
-          elif compgen -G "/tmp/pi-sydbox-build/*.log" > /dev/null \
-            || compgen -G "$RUNNER_TEMP/step-*.txt" > /dev/null; then
-            mode="build-failure"
-            mkdir -p "$dest/build-failure"
-            # sanitize-evidence.sh takes DEST as a directory and writes the
-            # file's basename into it
-            for f in /tmp/pi-sydbox-build/*.log; do
-              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure"
-            done
-            for f in "$RUNNER_TEMP"/step-*.txt; do
-              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure"
-            done
           else
-            printf 'nothing survived to publish\n'; exit 0
+            # anything else (build, corpus, or gate step failed before the
+            # summary existed) is a step failure: commit every captured step
+            # log plus whatever partial output exists
+            mode="step-failure"
+            bash tools/sanitize-evidence.sh "$run_dir" "$dest/step-failure" || true
+            if [ -f "$RUNNER_TEMP/step-corpus.txt" ]; then
+              bash tools/sanitize-evidence.sh "$RUNNER_TEMP/step-corpus.txt" "$dest/step-failure"
+            fi
+            for f in "$RUNNER_TEMP"/step-*.txt; do
+              [ -f "$f" ] || continue
+              case "$f" in *step-corpus.txt) continue ;; esac
+              bash tools/sanitize-evidence.sh "$f" "$dest/step-failure"
+            done
+            for f in /tmp/pi-sydbox-build/*.log; do
+              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/step-failure"
+            done
+            if [ ! -e "$dest/step-failure" ] || [ -z "$(compgen -G "$dest/step-failure/*")" ]; then
+              printf 'nothing survived to publish\n'; exit 0
+            fi
           fi
           {
             printf '# P1 runner evidence (workflow run %s): %s\n\n' "$GITHUB_RUN_ID" "$mode"
@@ -125,10 +134,10 @@ jobs:
               printf 'and gate logs are under run/. The order branch, not the artifact, is the\n'
               printf 'record: the artifact is the fallback.\n'
             else
-              printf 'The engine build failed before the corpus; the step logs and the build\n'
-              printf 'workdir logs are under build-failure/. Diagnose from those, fix the script\n'
-              printf 'or its runner prerequisites in this repository, and push again: a paths-\n'
-              printf 'matching commit re-runs this workflow itself.\n'
+              printf 'A step failed before the corpus summary existed; the step logs and any\n'
+              printf 'partial output are under step-failure/. Diagnose from those, fix the\n'
+              printf 'script or its runner prerequisites in this repository, and push again:\n'
+              printf 'a paths-matching commit re-runs this workflow itself.\n'
             fi
             printf '\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
           } > "$dest/README.md"
