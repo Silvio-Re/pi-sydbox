@@ -1,0 +1,12 @@
+{"event":"model_request","n":1,"method":"POST","url":"/v1/chat/completions","ts":"2026-11-25T14:06:39.150Z"}
+{"event":"model_body","n":1,"chars":5319,"ts":"2026-11-25T14:06:39.151Z"}
+{"event":"model_replied","n":1,"ts":"2026-11-25T14:06:39.153Z"}
+{"event":"model_request","n":2,"method":"POST","url":"/v1/chat/completions","ts":"2026-11-25T14:06:39.211Z"}
+{"event":"model_body","n":2,"chars":5538,"ts":"2026-11-25T14:06:39.211Z"}
+{"event":"model_replied","n":2,"ts":"2026-11-25T14:06:39.212Z"}
+{"event":"model_request","n":3,"method":"POST","url":"/v1/chat/completions","ts":"2026-11-25T14:06:40.022Z"}
+{"event":"model_body","n":3,"chars":5668,"ts":"2026-11-25T14:06:40.022Z"}
+{"event":"model_replied","n":3,"ts":"2026-11-25T14:06:40.023Z"}
+{"event":"model_request","n":4,"method":"POST","url":"/v1/chat/completions","ts":"2026-11-25T14:08:40.124Z"}
+{"event":"model_body","n":4,"chars":5887,"ts":"2026-11-25T14:08:40.124Z"}
+{"event":"model_replied","n":4,"ts":"2026-11-25T14:08:40.125Z"}
