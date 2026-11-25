@@ -1,0 +1,5 @@
+syd 3.59.0 (Take It Back)
+Rock solid application kernel
+Author: Ali Polatel <alip@chesswob.org>
+License: GPL-3.0-only
+Features: -debug, +force, -kcov, +log, -oci, -trusted

@@ -1,0 +1,3 @@
+{"id":"77120de4a8cd2f084b5c44238742c30453403fdb282a709bbdec15e69ddd0929","hid":"the_last_few_bricks","syd":14034,"ctx":"access","cap":["write","truncate","chmod","chattr"],"act":"deny","sys":"openat","fs":"proc","path":"/proc/self/oom_score_adj","mode":438,"type":"reg","oflags":["cloexec","creat","nofollow","trunc","wronly"],"rflags":["no-follow"],"cmd":"/bin/sh @SCRATCH@/d05-oom-adj-deny.sh","cwd":"@HOME@/work/pi-sydbox/pi-sydbox","pid":14030,"uid":1001,"time":"20261125T230347Z","tip":"configure `allow/write,truncate,chmod,chattr+/proc/self/oom_score_adj'"}
+@SCRATCH@/d05-oom-adj-deny.sh: 11: cannot create /proc/self/oom_score_adj: Permission denied
+verdict=deny
