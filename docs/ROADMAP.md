@@ -93,10 +93,11 @@ green.
 
 ### P1 — make the claims provable (vm; M1 required for the gate)
 
-1. Commit the evidence: the sanitized spike material M1 lands in
-   `docs/evidence/` (verdict logs, build records, probe scripts the code
-   comments cite). After this order, `grep -r agent_dir docs src` may only
-   return historical mentions, never citations as proof.
+1. Verify the evidence handover: M1 has already landed the sanitized
+   spike material in `docs/evidence/` (verdict logs, build records,
+   probe scripts, the capture). After this order, `grep -r agent_dir
+   docs src` may only return historical mentions, never citations as
+   proof; fix any citation that remains.
 2. Complete the D corpus per `design.md`: D7 stat existence leak, D8
    symlink in allowed dir pointing at a denied target, D9
    `/proc/self/root` traversal, D10 mmap MAP_SHARED on denied file, D11
@@ -108,14 +109,23 @@ green.
    denies; this pins the deny-by-default posture claim.
 4. Write `make gate`: compare `results/<label>/summary.tsv` against the
    committed golden expectations (`expectations/*.tsv`, format in
-   `expectations/README.md`), rule equal-or-stricter, fail on wider.
+   `expectations/README.md`), rule equal-or-stricter, fail on wider. Two
+   case-integrity rules from M1 are part of the gate: (a) a deny verdict
+   only counts when its engine record names the case's probed path —
+   M1's first capture had two of three D verdicts measuring their own
+   `/dev/null` redirect; (b) the D2 golden row is `deny` on both engines,
+   not a differential (the 0.20.29 append bug did not reproduce; see ADR
+   0002 and `expectations/README.md`): it still rejects a compiled
+   profile that guards only truncation, but neither the golden row nor
+   the gate may be cited as detecting an append bug.
 5. Runner evidence: build the pinned engine on the CI runner with the
    repo's own scripts, run the whole corpus, commit the verdict tables
    labeled with the runner kernel. Runner evidence is per-kernel-band and
    complements, never replaces, the canonical 6.8 witness (M2).
 
 Gate P1: `make gate` green against the golden set; every bypass probe
-equal-or-stricter; no doc cites gitignored paths as proof.
+equal-or-stricter; both case-integrity rules enforced by the gate; no doc
+cites gitignored paths as proof.
 
 ### P2 — contract the hosts (vm; after P0)
 
