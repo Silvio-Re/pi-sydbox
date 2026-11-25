@@ -31,6 +31,10 @@ on:
 # keeps contents: read. ci.yml does not run on this workflow's own commits
 # (GITHUB_TOKEN pushes trigger nothing), so the order's finalizing commit is
 # still human-made and re-runs CI as usual.
+#
+# The publish step runs on failure too: a build that cannot reproduce without
+# its logs gets them committed (build-failure/), because anonymous access to
+# the Actions log API is admin-only in this loop.
 permissions:
   contents: write
 
@@ -56,13 +60,16 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustc" --version
       - name: libseccomp 2.6.0 (source; apt's 2.5.5 cannot link the engine)
-        run: bash tools/setup/build-libseccomp.sh 2.6.0
+        run: |
+          set -o pipefail
+          bash tools/setup/build-libseccomp.sh 2.6.0 2>&1 | tee "$RUNNER_TEMP/step-libseccomp.txt"
       - name: engine 3.59.0 at the pinned commit (syd.lock)
         run: |
+          set -o pipefail
           env PKG_CONFIG_PATH="$HOME/.local/opt/libseccomp-2.6.0/lib/pkgconfig" \
               LIBSECCOMP_LIB_PATH="$HOME/.local/opt/libseccomp-2.6.0/lib" \
               LIBSECCOMP_LINK_TYPE=static \
-              bash tools/setup/build-engine.sh "$SYD_VERSION" --commit "$SYD_COMMIT" | tee "$RUNNER_TEMP/syd-build.txt"
+              bash tools/setup/build-engine.sh "$SYD_VERSION" --commit "$SYD_COMMIT" 2>&1 | tee "$RUNNER_TEMP/step-engine.txt"
       - name: corpus run
         env:
           RUNDIR: results/syd-runner
@@ -70,14 +77,14 @@ jobs:
           mkdir -p "$RUNDIR"
           "$HOME/.local/opt/syd-$SYD_VERSION/syd" --version > "$RUNDIR/engine.txt"
           uname -r > "$RUNDIR/uname.txt"
-          cp "$RUNNER_TEMP/syd-build.txt" "$RUNDIR/syd-build.txt"
+          cp "$RUNNER_TEMP/step-engine.txt" "$RUNDIR/syd-build.txt"
           make corpus LABEL=syd-runner PROFILE=corpus/profiles/syd-a.profile \
                ENGINE='$HOME/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --'
       - name: gate (equal-or-stricter vs expectations/, plus the probe-record rules)
         run: |
           set -o pipefail
           make gate RESULTS=results/syd-runner/summary.tsv 2>&1 | tee results/syd-runner/gate.txt
-      - name: publish runner evidence to the order branch
+      - name: publish to the order branch (evidence on success, logs on failure)
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,21 +94,40 @@ jobs:
             p1-provable-claims) ;;
             *) printf 'not the order branch (%s): leaving the evidence in the artifact only\n' "$GITHUB_REF_NAME"; exit 0 ;;
           esac
-          run_dir="results/syd-runner"
           dest="docs/evidence/p1-runner-$GITHUB_RUN_ID"
-          if ! compgen -G "$run_dir/*" > /dev/null; then
-            printf 'no corpus run directory survived to publish\n'; exit 0
-          fi
+          run_dir="results/syd-runner"
           mkdir -p "$(dirname "$dest")"
-          bash tools/sanitize-evidence.sh "$run_dir" "$dest/run"
+          if compgen -G "$run_dir/*" > /dev/null; then
+            mode="run"
+            bash tools/sanitize-evidence.sh "$run_dir" "$dest/run"
+          elif compgen -G "/tmp/pi-sydbox-build/*.log" > /dev/null \
+            || compgen -G "$RUNNER_TEMP/step-*.txt" > /dev/null; then
+            mode="build-failure"
+            mkdir -p "$dest/build-failure"
+            for f in /tmp/pi-sydbox-build/*.log; do
+              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure/$(basename "$f")"
+            done
+            for f in "$RUNNER_TEMP"/step-*.txt; do
+              [ -f "$f" ] && bash tools/sanitize-evidence.sh "$f" "$dest/build-failure/$(basename "$f")"
+            done
+          else
+            printf 'nothing survived to publish\n'; exit 0
+          fi
           {
-            printf '# P1 runner evidence (workflow run %s)\n\n' "$GITHUB_RUN_ID"
-            printf 'Engine: '; head -n1 "$dest/run/engine.txt" 2>/dev/null || true
-            printf 'Kernel: '; head -n1 "$dest/run/uname.txt" 2>/dev/null || true
+            printf '# P1 runner evidence (workflow run %s): %s\n\n' "$GITHUB_RUN_ID" "$mode"
+            if [ "$mode" = run ]; then
+              printf 'Engine: '; head -n1 "$dest/run/engine.txt" 2>/dev/null || true
+              printf 'Kernel: '; head -n1 "$dest/run/uname.txt" 2>/dev/null || true
+              printf '\nBuilt with the repository scripts (tools/setup/, syd.lock pinned); corpus\n'
+              printf 'and gate logs are under run/. The order branch, not the artifact, is the\n'
+              printf 'record: the artifact is the fallback.\n'
+            else
+              printf 'The engine build failed before the corpus; the step logs and the build\n'
+              printf 'workdir logs are under build-failure/. Diagnose from those, fix the script\n'
+              printf 'or its runner prerequisites in this repository, and push again: a paths-\n'
+              printf 'matching commit re-runs this workflow itself.\n'
+            fi
             printf '\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
-            printf '\nBuilt with the repository scripts (tools/setup/, syd.lock pinned); corpus\n'
-            printf 'and gate logs are under run/. The order branch, not the artifact, is the\n'
-            printf 'record: the artifact is the fallback.\n'
           } > "$dest/README.md"
           # the M1 trap: `git add` skips an ignored .log silently; a leaked
           # evidence file must fail the run instead of quietly vanishing
@@ -118,10 +144,11 @@ jobs:
           if git diff --cached --quiet; then
             printf 'nothing staged for %s\n' "$dest"; exit 0
           fi
-          git commit -m "P1 runner evidence: engine build + corpus + gate (workflow run $GITHUB_RUN_ID, kernel $(head -n1 "$dest/run/uname.txt"))"
+          git commit -m "P1 runner evidence: $mode (workflow run $GITHUB_RUN_ID)"
           git push origin "HEAD:$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
           name: corpus-syd-runner
           path: results/syd-runner/
-          if-no-files-found: error
+          if-no-files-found: warn
