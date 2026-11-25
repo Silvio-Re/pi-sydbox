@@ -11,11 +11,14 @@
   runs; the engine (the parent, which never execs again) keeps writing
   records. Standing denies on the log path block every reopen including
   `/proc/self/fd/3` (syd checks the canonical path). The fd-forge verdict
-  step pins all three cells: sealed child sees no fd 3, no forged record
-  reaches the sink, engine records still flow — plus a control cell
-  proving the visibility check is not vacuous. A first attempt that set
-  FD_CLOEXEC in the wrap shell was rejected by that same probe: it
-  blinded the engine's channel too (verdict 20261125-105950).
+  step pins the seal: the sealed workload cannot write fd 3, no forged
+  bytes reach the sink, and engine records still flow. The control cell
+  is diagnostic: syd 3.59.0 closes inherited fds for the workload itself
+  (every control cell on host saw EBADF with no closer at all), so the
+  closer is defense-in-depth on this engine and load-bearing on any that
+  leaks instead. A first attempt that set FD_CLOEXEC in the wrap shell was
+  rejected by that same probe: it blinded the engine's channel too
+  (verdict 20261125-105950).
 - S2: the legacy grant import from `<workdir>/agent_dir/.sydbox/grants.json`
   (pre-0.2 migration) no longer runs implicitly — a fresh clone of a repo
   that happens to ship that path could preload itself with permanent grants
