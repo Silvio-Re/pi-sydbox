@@ -1,8 +1,0 @@
-== gperf 3.1 (build-time tool) ==
-fetch https://ftp.gnu.org/gnu/gperf/gperf-3.1.tar.gz
-curl: (23) client returned ERROR on write of 7493 bytes
-fetch https://mirrors.kernel.org/gnu/gperf/gperf-3.1.tar.gz
-curl: (23) client returned ERROR on write of 8192 bytes
-fetch https://ftpmirror.gnu.org/gperf/gperf-3.1.tar.gz
-curl: (23) client returned ERROR on write of 16138 bytes
-gperf fetch failed on every mirror
