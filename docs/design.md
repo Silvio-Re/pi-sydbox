@@ -180,7 +180,9 @@ Gate: unit tests green, D-corpus differential green headless against pi 1.6.0.
    dialog choice, timeout, budget, rerun guard, perf threshold.
 3. Daily-driver projects one at a time.
 
-Gate: 5 to 7 days of real work, zero unexplained denials, zero prompt storms.
+Gate: 1 day of real work (maintainer decision 2026-11-26, compressed from
+5-7 days; the full roadmap soak checklist still applies), zero unexplained
+denials, zero prompt storms.
 
 ### Phase 4a / 4b — restore AppArmor, reboot, prove rollback
 
@@ -211,7 +213,8 @@ Measured in agent work, not human working days:
 - Phase 1 and 3 gates: mostly waiting on real work and reboots; agent time per gate
   ~20-40 calls.
 - Total agent wall-clock to phase 3 sign-off: ~6-10 hours, spread over 4-6 sessions.
-  Human calendar time is dominated by the 5-7 day phase 3 soak, not by agent work.
+  Human calendar time is dominated by the phase 3 soak (1 day since the
+  2026-11-26 maintainer decision), not by agent work.
 - Ongoing: ~30-60 agent calls per syd upgrade, ~5 per pi upgrade check.
 
 ## Abort conditions

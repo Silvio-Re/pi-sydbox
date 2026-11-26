@@ -192,47 +192,34 @@ unsandboxed machine adds nothing the M6 run cannot deliver). The gate tasks
 with the kernel band) are executed there as part of the M6 session, and
 the 30-minute human measurement still trails it.
 
+### P6 — distro engine path: DONE (PR #6, squash-merged as 509f7ac, 2026-11-26)
+
+The 6.x-band default is now the pinned third-party binary (Arch
+`syd-3.59.0-1-x86_64`): `syd.lock` `distroBuild` records the URL, package
+sha256 `6d33c68f…`, extracted-binary sha256 `700585cd…`, packager and the
+feature difference vs the maintainer build (`+oci`, no `+systemd`).
+`tools/setup/install-distro.sh` fails closed on either sha mismatch and
+installs the binary behind a deterministic exec wrapper (the binary links
+libseccomp.so.2 dynamically and needs >= 2.6.0, which Ubuntu-class hosts do
+not ship; setup builds 2.6.0 locally as before). The source build is the
+documented fallback (`--build-from-source`, automatic on non-x86_64), with
+the same-prefix distro pair replaced deterministically first, fixing the
+build-engine.sh idempotence interaction found while testing. The machine
+lock records the real binary beside the wrapper (`src/setup.ts
+--distro-binary`). Supervisor verification is in the merge commit:
+typecheck clean, 138 tests / 0 fail, shellcheck clean on the ci.yml set,
+distroBuild hashes cross-checked against independent measurements of the
+real artifact, installer functionally verified including a tamper negative
+test (exit 1, nothing written). No engine execution claimed or performed
+(agent surfaces cannot host the engine — environment.md, Limits).
+
 ## Open orders
-
-### P6 — distro engine path (vm; ready; 6.x band default, source build fallback)
-
-1. `syd.lock`: a `distroBuild` section mirroring `sourceBuild` — the pinned
-   third-party 3.59.0 Arch package (url, package + extracted-binary sha256,
-   packager, fetchedAt) with notes recording exactly what it is: a
-   third-party build, NOT the maintainer build (`db994415…`); trust is
-   pinned bytes (the Arch PGP .sig is optional and documented, not part of
-   the enforced chain); x86_64 only; features differ (`+oci`, no `+systemd`).
-2. `tools/setup/install-distro.sh`: download to the cache, verify the
-   package sha256 AND the extracted `usr/bin/syd` sha256, fail closed on
-   either mismatch (no partial install), install only the engine binary
-   under `~/.local/opt/syd-3.59.0/`, idempotent like install.sh.
-3. `tools/setup/setup.sh`: on the 6.x band the default becomes libseccomp
-   2.6.0 + the distro install; the launcher decision (exec wrapper with
-   LD_LIBRARY_PATH vs bare run on hosts already carrying >= 2.6.0) is made
-   and justified; the machine lock hashes the real binary either way; the
-   source build moves behind `--build-from-source`; non-x86_64 hosts fall
-   back to source with a note; the >= 7.2 release path is unchanged.
-4. `src/setup.ts` + tests: `buildMachineLock` / `machineLockDiff` extended
-   for the distroBuild section; unit tests for the new section and diff.
-5. Docs, three-layer separation: environment.md gets the acquisition policy
-   (>= 7.2 upstream release / < 7.2 distro default / source fallback) and
-   the Limits row "agent surfaces cannot host the engine" with the two
-   2026-11-26 measurements; support-matrix.md gets the provenance rows
-   (maintainer `db994415…`, distro `700585cd…`, upstream 3.60.0
-   signature-verified); README keeps the four-command shape and says the
-   6.x default needs no rustup.
-6. Local checks only (`npm run ci`, shellcheck on the ci.yml set): no agent
-   surface may claim engine execution; the real drill runs later on the
-   maintainer's 6.8 machine with the M6 fold.
-
-Gate P6: pass = the distro path installs byte-verified, fail-closed and
-machine-locked under `make setup`, all local checks green; engine execution
-is deliberately NOT part of this gate (environment.md, Limits).
 
 ### P4/ M4-M7 — soak and decommission (machine; after P0 and P3)
 
-M4 flip drills (twice), M5 soak (the design.md phase-3 gate: 5-7 days of
-daily-driver work in pi-web with the checklist below), M6 AppArmor restore,
+M4 flip drills (twice), M5 soak (the design.md phase-3 gate, 1 day of
+daily-driver work in pi-web with the full checklist below — maintainer
+decision 2026-11-26, compressed from 5-7 days), M6 AppArmor restore,
 reboot and rollback drill (design.md phase 4, `runbook-rollback.md`), M7
 landstrip decommission and weekly-check rewrite validation (design.md
 phase 5). Soak checklist: prompts render in the browser, auto-deny fires
@@ -296,10 +283,10 @@ reorder rows.
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
 | P1 provable claims | vm | M1 | done (PR #2, squash-merged d899865) | `corpus/d/` + `corpus/p/`, `tools/gate.sh` + `tools/golden-tsv.sh` + `tools/case-integrity.sh`, `expectations/`; engine-backed corpus + gate run lands at Gate P3 |
 | P2 host contracts and drift automation | vm | P0 | done (docs/evidence/p2-contract-drill-20261126/, docs/evidence/p2-drift-report-20261126.txt) | `test/pi-contract.test.ts`, `docs/support-matrix.md`, `tools/weekly-check.sh` + `tools/drift-report.py`, `syd.lock` (`hosts`) |
-| P3 clone-to-usable | vm | P1, P2.2 | blocked (Stage A done and green locally; gate execution needs an unsandboxed machine — the gate VM's harness shell makes every sandboxed exec exit ENOSYS 38, docs/evidence/p3-gate-20261126/) | `tools/setup/setup.sh` + `src/setup.ts` + `test/setup.test.ts`, `src/cli.ts` + `test/cli.test.ts`, README, `test/pi-contract.test.ts` (transform + prompt + command surfaces), `docs/evidence/p3-gate-20261126/` |
+| P3 clone-to-usable | vm | P1, P2.2 | stage A done and merged; gate folded into the M6 canonical session (maintainer decision 2026-11-26, not-the-author clause waived) — execution pending that session; the blocked-gate evidence stays at docs/evidence/p3-gate-20261126/ | `tools/setup/setup.sh` + `src/setup.ts` + `test/setup.test.ts`, `src/cli.ts` + `test/cli.test.ts`, README, `test/pi-contract.test.ts` (transform + prompt + command surfaces), `docs/evidence/p3-gate-20261126/` |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
 | M3 pi-web auto-deny confirm | machine | P0.1 | folded (into M5) | tasks listed in its order text |
-| P6 distro engine path | vm | P3 (Stage A) | doing (PR open; supervisor verifies + squash-merges) | `syd.lock` (`distroBuild`), `tools/setup/install-distro.sh`, `tools/setup/setup.sh` (`--build-from-source`), `src/setup.ts` + `test/setup.test.ts` |
+| P6 distro engine path | vm | P3 (Stage A) | done (PR #6 squash-merged as 509f7ac; supervisor verification in the merge commit) | `syd.lock` (`distroBuild`), `tools/setup/install-distro.sh`, `tools/setup/setup.sh` (`--build-from-source`), `src/setup.ts` + `test/setup.test.ts` |
 | M4 flip drills | machine | P3 | todo | |
 | M5 soak | machine | M4, P0.1 | todo | |
 | M6 AppArmor + reboot + rollback | machine | M4 | todo | |
