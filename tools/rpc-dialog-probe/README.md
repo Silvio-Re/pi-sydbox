@@ -18,10 +18,13 @@ end machine's evidence, not this probe's. The pi-web browser-layer
 confirmation of the same dialog behavior is roadmap item M3.
 
 ```sh
+# --pi, --ext and --repo must be ABSOLUTE paths: the harness runs pi with
+# its cwd inside --work, so relative paths resolve against the scratch
+# project dir and fail (verified 2026-11-26).
 node tools/rpc-dialog-probe/run-probe.mjs \
-  --pi <path to pi-coding-agent dist/bundle/cli.js> \
-  --ext src/index.ts \
-  --repo <repo root> \
+  --pi "$PWD/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" \
+  --ext "$PWD/src/index.ts" \
+  --repo "$PWD" \
   --work <scratch dir, created> \
   --expect-timeout-ms $(grep -oP 'AUTO_DENY_MS = \K[0-9_]+' src/dialog.ts | tr -d '_')
 ```

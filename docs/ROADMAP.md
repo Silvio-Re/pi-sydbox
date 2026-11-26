@@ -230,6 +230,20 @@ report lands in `docs/` (dates, counts, exceptions).
 Gate P4: soak report committed; rollback drill executed once; landstrip
 out of the runtime chain.
 
+The scripted part of the machine session is `tools/gate-session.sh`
+(maintainer decision 2026-11-26: do not offload mechanical work to the
+human). From a fresh clone: `bash tools/gate-session.sh` runs preflight,
+the maintainer-engine backup, `make setup` (elapsed time recorded as the
+onboarding metric, method "scripted drill"), `npm ci`, the headless RPC
+probe, corpus + gate with the installed distro engine (label
+`p3-gate-distro`), the M2 canonical smoke + corpus + gate with the
+backed-up maintainer binary (label `m6-canonical`), the machine-lock diff
+and the AppArmor/sysctl snapshot, then packs an evidence tarball. After
+the reboot, `bash tools/gate-session.sh --phase-4b` verifies the sysctl
+and reruns corpus + gate. The human tail stays human: phase 4a/4b sudo +
+reboot (design.md phase 4, `runbook-rollback.md`), the M4 flip drill
+sessions, and the 1-day M5 soak.
+
 #### M2 — canonical kernel-band witness: FOLDED into M6
 
 No standalone machine session. The tasks ride the first machine session
