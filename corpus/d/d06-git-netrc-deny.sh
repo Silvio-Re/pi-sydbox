@@ -7,18 +7,32 @@
 # run.sh's out-of-grant fixture home, and the corpus policy grants nothing
 # outside the scratch root, so the netrc read is denied by the
 # deny-by-default posture — the same enforcement class the compiled
-# pi-sydbox profile applies to denyReadAlways ~/.netrc. GIT_CONFIG_GLOBAL
-# pins git's config reads into the scratch so the netrc is the only home
-# file git touches. Engine deny (record names the netrc path) => curl has
-# no credentials => git's credential prompt with terminal prompts disabled
-# => verdict deny. Engine allow => curl sends the machine entry =>
-# ls-remote succeeds => verdict allow, a leaked credential file. Anything
-# else (server down, git bug) prints error, never a fake deny.
+# pi-sydbox profile applies to denyReadAlways ~/.netrc.
+#
+# Case shape, so that the git client really reaches the netrc credential
+# access (the denied step under test) instead of dying on incidental
+# bookkeeping:
+#   - git runs with its working directory inside the scratch root: its
+#     first filesystem acts are stats of its own cwd, and outside the
+#     grant those are denied before any connection is attempted.
+#   - GIT_CONFIG_GLOBAL pins git's config reads into the scratch and
+#     GIT_CONFIG_NOSYSTEM keeps /etc out, so the netrc is the only home
+#     or system file git can even try to touch.
+#   - the verdict scan below reads the captured git output with shell
+#     builtins only: an external grep under the sandbox has its own
+#     /proc accesses denied, which would fail the case as error instead
+#     of measuring git.
+# Engine deny (record names the netrc path) => curl has no credentials =>
+# git's credential prompt with terminal prompts disabled => verdict deny.
+# Engine allow => curl sends the machine entry => ls-remote succeeds =>
+# verdict allow, a leaked credential file. Anything else (server down,
+# git bug, an earlier denial) prints error, never a fake deny.
 # probe: ${CASE_OUT_HOME}/.netrc
 if [ -z "${CASE_NETRC_PORT:-}" ]; then
   echo "verdict=error"
   exit 0
 fi
+cd -- "$CASE_ROOT" || { echo "verdict=error"; exit 0; }
 : > "$CASE_ROOT/ok/d06-config"
 if HOME="$CASE_OUT_HOME" \
    GIT_CONFIG_GLOBAL="$CASE_ROOT/ok/d06-config" \
@@ -29,7 +43,13 @@ if HOME="$CASE_OUT_HOME" \
        > "$CASE_ROOT/ok/d06-out" 2>&1; then
   echo "verdict=allow"
 else
-  if grep -q "could not read Username" "$CASE_ROOT/ok/d06-out"; then
+  found=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      *"could not read Username"*) found=1 ;;
+    esac
+  done < "$CASE_ROOT/ok/d06-out"
+  if [ -n "$found" ]; then
     echo "verdict=deny"
   else
     echo "verdict=error"
