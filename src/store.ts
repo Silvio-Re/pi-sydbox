@@ -89,6 +89,19 @@ export function rulesFor(grants: readonly StoredGrant[], tier: Tier): string[] {
 }
 
 /**
+ * Removes every grant the predicate matches (the CLI's revoke; a stored rule
+ * may legitimately appear more than once with different timestamps). Returns
+ * the number removed. Written through the same atomic path as appendGrant.
+ */
+export function removeGrant(file: string, matches: (grant: StoredGrant) => boolean): number {
+  const grants = readGrants(file);
+  const kept = grants.filter((g) => !matches(g));
+  const removed = grants.length - kept.length;
+  if (removed > 0) writeGrants(file, kept);
+  return removed;
+}
+
+/**
  * Writes through a temporary file: an interrupted write must never leave the
  * store unparseable, because the launcher reads it on every run.
  */

@@ -40,6 +40,7 @@ sanitize_stream() {
     -e 's#/home/[A-Za-z0-9._][A-Za-z0-9._-]*#@HOME@#g' \
     -e 's#/media/[A-Za-z0-9._][A-Za-z0-9._-]*#@SHARE@#g' \
     -e 's#/tmp/pi-sydbox-[A-Za-z0-9._-]*#@SCRATCH@#g' \
+    -e 's#/tmp/syd-smoke\.[A-Za-z0-9._-]*#@SCRATCH@#g' \
     -e 's#/tmp/sydbox[A-Za-z0-9._-]*#@SCRATCH@#g' \
     -e 's#/run/user/[0-9]+#@RUNTIME@#g'
 }

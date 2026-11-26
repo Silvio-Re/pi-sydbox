@@ -2,6 +2,51 @@
 
 ## [Unreleased]
 
+- P3 clone-to-usable (roadmap order P3; Stage A delivered, Gate P3 blocked on
+  the gate machine's sandboxed shell — exact condition and evidence below):
+  - `make setup` (tools/setup/setup.sh wrapping the existing setup scripts):
+    kernel-band detection (src/setup.ts, the docs/environment.md rule), the
+    release path or the libseccomp+engine source path, machine-lock
+    provisioning (~/.local/opt/syd.lock from the repo syd.lock with local
+    paths + the installed binary's sha256), the 03-smoke, and the pi install
+    next steps; the python3-cryptography prerequisite is named up front. The
+    band parser, lock generator and lock differ are unit-tested against the
+    committed syd.lock. A real second machine (kernel 6.18, source band)
+    ran it end to end: engine built at the pinned tag and commit,
+    `docs/evidence/p3-gate-20261126/`.
+  - README rewritten for clone-to-usable: four commands to sandboxed bash, a
+    first-run walkthrough (prompt, the four tiers with their actual
+    persistence, the 4-prompt budget, the measured 120 s auto-deny), a
+    refusal-message troubleshooting table, and a security caveat whose every
+    claim links committed evidence. docs/support-matrix.md is linked as the
+    sibling doc, not duplicated.
+  - Grants/policy CLI (src/cli.ts: `list`, `revoke`, `effective-policy`,
+    per project and global) reading and writing the same grant store, policy
+    file and compiler the extension uses; `removeGrant` lives in src/store.ts
+    next to appendGrant so there is one store implementation. No GUI.
+  - Agent-facing feedback: pi 1.6.0's tool_result transform contract EXISTS
+    (ToolResultEventResult, "can modify result"), so a denial-bearing bash
+    result is annotated with a one-line explainer (content appended, never
+    replaced, keeping structuredContent valid); before_agent_start's
+    systemPromptOptions.promptGuidelines carries the sandbox guidance (denials
+    need human grants, unchanged retries are futile). No limitation to record —
+    all three pi surfaces are asserted in test/pi-contract.test.ts.
+  - `/sydbox adopt` extension command (registerCommand, which exists in pi
+    1.6.0): performs the sandbox.json -> state-dir policy copy on the explicit
+    command only; re-adopt is refused, `/sydbox status` reports the adopted
+    policy. The manual cp stays in the H1 refusal text.
+  - Engine-build portability fix found by the gate run: tools/setup/build-engine.sh
+    died with rc=141 (SIGPIPE under `set -o pipefail`) because `syd --version
+    | head -1` cuts the pipe while syd still writes; the whole output is now
+    captured and the first line taken afterwards.
+  - Gate P3 is BLOCKED, not failed-and-hidden: the gate machine built the
+    engine but every sandboxed exec there exits ENOSYS rc=38 (also with -p
+    off) because its agent-harness shell is itself supervised — the exact
+    "no sandbox layer around the shell" precondition the gate names. The
+    corpus run, make gate and the headless RPC round-trip were NOT executed
+    and are not claimed. Evidence: docs/evidence/p3-gate-20261126/; recorded
+    in docs/environment.md (Limits) and the roadmap Ledger.
+
 - P2 contract the hosts (roadmap order P2; evidence: the Gate P2 drill under
   `docs/evidence/p2-contract-drill-20261126/` and the drift run
   `docs/evidence/p2-drift-report-20261126.txt`):

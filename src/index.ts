@@ -35,7 +35,7 @@
  * unsandboxed. Blocking is the only failure mode this module has.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -49,7 +49,28 @@ import { appendGrant, readGrants, rulesFor, type Tier } from "./store.ts";
 
 export interface PiApi {
   registerTool?: (tool: unknown) => void;
+  registerCommand?: (name: string, options: { description?: string; handler: (args: string, ctx: unknown) => Promise<void> | void }) => void;
   on?: (event: string, handler: (event: unknown, ctx: unknown) => unknown) => void;
+}
+
+/**
+ * The pi contract points P3 relies on, all verified against
+ * @earendil-works/pi-coding-agent 1.6.0's shipped declarations (and kept
+ * under check by test/pi-contract.test.ts): a tool_result handler may return
+ * ToolResultEventResult to modify a result (append-only here: replacing
+ * content would drop structuredContent); before_agent_start exposes mutable
+ * systemPromptOptions.promptGuidelines; registerCommand(name, {handler}) adds
+ * a slash command. No fallback was needed — none of the three is a
+ * limitation case.
+ */
+export const SANDBOX_PROMPT_GUIDELINES = [
+  "pi-sydbox sandbox: a bash result denied with 'Permission denied' (EPERM) is a kernel-level denial — it needs a human approval in the pi-sydbox dialog before that path can work.",
+  "Never retry a sandbox-denied command unchanged: identical retries fail identically. The grant, once a human applies it, takes effect on the next identical call — continue with other work meanwhile.",
+] as const;
+
+/** One-line explainer appended to a denial-bearing bash tool result (P3.4). */
+export function denialExplainer(count: number): string {
+  return `pi-sydbox: ${count} engine denial(s) are behind this result — each needs a human grant (the approval prompt); an unchanged retry cannot succeed.`;
 }
 
 export const LOG_NAME = "syd.log";
@@ -575,7 +596,7 @@ export default function activate(pi: PiApi): void {
     }
   };
 
-  pi.on?.("tool_result", async (_event, ctx) => {
+  pi.on?.("tool_result", async (event, ctx) => {
     if (state === null) return undefined;
     let text: string;
     try {
@@ -585,6 +606,19 @@ export default function activate(pi: PiApi): void {
     }
     const { records, offset, skipped } = newDenials(text, state.logOffset);
     state.logOffset = offset;
+    // P3.4, the transform half: the pi 1.6.0 contract (ToolResultEventResult,
+    // "Fired after a tool executes. Can modify result.") lets this handler
+    // return a modified result. Appending one explainer line to a
+    // denial-bearing BASH result tells the model what the denial means; only
+    // content is appended (never replaced), so structuredContent stays valid
+    // per the contract note in pi's own declarations. Records consumed by
+    // this same handler are the count: the log offset has already advanced.
+    const tool = (event as { toolName?: string }).toolName;
+    const content = (event as { content?: Array<{ type?: string; text?: string }> }).content;
+    const annotate = tool === "bash" && records.length > 0 && Array.isArray(content);
+    const result = annotate
+      ? { content: [...content, { type: "text", text: denialExplainer(records.length) }] }
+      : undefined;
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd();
     const ui = uiPort(ctx);
 
@@ -663,7 +697,68 @@ export default function activate(pi: PiApi): void {
       ui.notify?.(`pi-sydbox: ${dropped} further denial(s) left denied (prompt budget reached; they will be offered again on the next run)`);
     }
     if (grantedAny) rebuildProfile(state);
+    return result;
+  });
+
+  // P3.4, the system-prompt half: before_agent_start exposes the mutable
+  // prompt options (pi 1.6.0), so every run carries the two guideline
+  // bullets. The options are re-normalized per run by pi's own runner, but
+  // the guard keeps a hostile double registration from duplicating them.
+  pi.on?.("before_agent_start", (event) => {
+    const options = (event as { systemPromptOptions?: { promptGuidelines?: string[] } }).systemPromptOptions;
+    if (options === undefined || !Array.isArray(options.promptGuidelines)) return undefined;
+    for (const line of SANDBOX_PROMPT_GUIDELINES) {
+      if (!options.promptGuidelines.includes(line)) options.promptGuidelines.push(line);
+    }
     return undefined;
+  });
+
+  // P3.5: /sydbox adopt. The command IS the human adoption act H1 asks for
+  // (the policy copy from the confined tree to the approved state dir); the
+  // manual cp stays in the refusal text for hosts without the command.
+  // Only `adopt` is accepted; anything else prints usage instead of guessing.
+  pi.registerCommand?.("sydbox", {
+    description: "pi-sydbox sandbox: adopt (or inspect) this workspace's sandbox.json",
+    handler: async (args, ctx) => {
+      const notify = (message: string): void => {
+        const ui = (ctx as { ui?: { notify?: (m: string) => void } }).ui;
+        if (typeof ui?.notify === "function") ui.notify(`pi-sydbox: ${message}`);
+      };
+      const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd();
+      const layout = stateLayout(cwd);
+      const usage = "usage: /sydbox adopt  (or /sydbox status)";
+      const command = args.trim().split(/\s+/)[0] ?? "";
+      if (command === "status" || command === "") {
+        const approved = join(layout.stateDir, POLICY_NAME);
+        notify(existsSync(approved)
+          ? `policy adopted at ${approved}`
+          : `no policy adopted for ${cwd}${existsSync(join(cwd, "sandbox.json")) ? " — /sydbox adopt reviews and copies sandbox.json" : ""}`);
+        return;
+      }
+      if (command !== "adopt") {
+        notify(usage);
+        return;
+      }
+      const present = [join(cwd, "sandbox.json"), join(cwd, "agent_dir", "sandbox.json")].filter((candidate) => existsSync(candidate));
+      if (present.length === 0) {
+        notify(`no sandbox.json in ${cwd} — nothing to adopt`);
+        return;
+      }
+      const approved = join(layout.stateDir, POLICY_NAME);
+      if (existsSync(approved)) {
+        notify(`a policy is already adopted at ${approved} — remove it first if you really mean to re-adopt`);
+        return;
+      }
+      try {
+        const source = present[0] as string;
+        const policy = JSON.parse(readFileSync(source, "utf8")) as SandboxPolicy;
+        mkdirSync(layout.stateDir, { recursive: true, mode: 0o700 });
+        writeFileSync(approved, `${JSON.stringify(policy, null, 2)}\n`, { mode: 0o600 });
+        notify(`adopted ${source} -> ${approved} (the human act H1 requires; review it with: cat ${approved})`);
+      } catch (err) {
+        notify(`adopt failed, nothing written: ${(err as Error).message}`);
+      }
+    },
   });
 
   pi.on?.("user_bash", async (event, ctx) => {

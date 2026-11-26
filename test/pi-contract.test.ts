@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import {
   createLocalBashOperations,
   VERSION,
+  type BeforeAgentStartEvent,
   type ExtensionAPI,
   type ExtensionUIDialogOptions,
   type ToolCallEvent,
   type ToolResultEvent,
+  type ToolResultEventResult,
   type UserBashEvent,
 } from "@earendil-works/pi-coding-agent";
 
@@ -66,6 +68,31 @@ const registersUserBash: (api: ExtensionAPI) => void = (api) => {
   api.on("user_bash", () => undefined);
 };
 
+// --- P3 additions: the surfaces the clone-to-usable order depends on -------
+
+/** A tool_result handler may return a modified result (the transform contract). */
+const transformsBashResult: (api: ExtensionAPI) => void = (api) => {
+  api.on("tool_result", (event: ToolResultEvent): ToolResultEventResult | undefined => {
+    const explainer: ToolResultEventResult = { content: [...event.content, { type: "text", text: "denied" }] };
+    return event.isError ? explainer : undefined;
+  });
+};
+
+/** before_agent_start exposes the mutable system-prompt options. */
+const appendsPromptGuidelines: (api: ExtensionAPI) => void = (api) => {
+  api.on("before_agent_start", (event: BeforeAgentStartEvent) => {
+    event.systemPromptOptions.promptGuidelines.push("a guideline");
+  });
+};
+
+/** registerCommand adds a slash command whose handler receives its arguments. */
+const registersSlashCommand: (api: ExtensionAPI) => void = (api) => {
+  api.registerCommand("sydbox", {
+    description: "pi-sydbox sandbox",
+    handler: async (args: string) => { void args; },
+  });
+};
+
 test("the type-level contract assertions hold", () => {
   assert.ok(dialogTimeoutAccepted);
   assert.ok(legacyTimeoutMsRejected);
@@ -75,4 +102,7 @@ test("the type-level contract assertions hold", () => {
   assert.ok(typeof registersToolCall === "function");
   assert.ok(typeof registersToolResult === "function");
   assert.ok(typeof registersUserBash === "function");
+  assert.ok(typeof transformsBashResult === "function", "the tool_result transform contract exists in 1.6.0");
+  assert.ok(typeof appendsPromptGuidelines === "function", "before_agent_start exposes promptGuidelines in 1.6.0");
+  assert.ok(typeof registersSlashCommand === "function", "registerCommand exists in 1.6.0");
 });

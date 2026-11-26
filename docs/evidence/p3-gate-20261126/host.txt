@@ -1,0 +1,9 @@
+# uname and process context of the gate machine (2026-11-26)
+Linux 2f5e7b84-32a1-4a26-a461-69a6285fb672 6.18.35 #1 SMP Mon Aug 17 15:32:29 UTC 2026 x86_64 GNU/Linux
+
+# The agent-harness context every command of this session runs under:
+CapEff:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	0
+Seccomp_filters:	0
+MemTotal:        6210368 kB

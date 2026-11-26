@@ -20,6 +20,7 @@ carries a host path:
 | `/home/<user>` | `@HOME@` |
 | `/media/<share>` | `@SHARE@` |
 | `/tmp/pi-sydbox-<suffix>` | `@SCRATCH@` |
+| `/tmp/syd-smoke.<suffix>` (03-smoke.sh temp dirs) | `@SCRATCH@` |
 | `/tmp/sydbox<suffix>` | `@SCRATCH@` |
 | `/run/user/<uid>` | `@RUNTIME@` |
 
@@ -39,6 +40,7 @@ behind.
 |---|---|---|
 | `m1-20261125/` | M1 golden capture + evidence handover | landstrip profile and its resolved shape, engine pin, the phase-0 machine artifact, the two cited verdict runs, the probe scripts the code comments cite, the capture itself |
 | `p2-contract-drill-20261126/` | P2 contract the hosts | the Gate P2 drill: each pi contract point broken one at a time against the pinned 1.6.0 package, each failing transcript, and the final green run |
+| `p3-gate-20261126/` | P3 clone-to-usable | the gate attempt on a second, non-author machine (kernel 6.18, source band): band detection, libseccomp + engine build at the pinned tag, machine-lock provisioning and the smoke transcript showing why sandboxed exec is blocked in an agent-harness VM (rc=38 ENOSYS) |
 
 A real run of the extended drift check of the same order is committed as
 `p2-drift-report-20261126.txt` (one line per source, WARN on drift).

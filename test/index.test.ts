@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import activate, { describeDenial, initialLogOffset, LockedEngineError, newDenials, RECORD_FRAMING, resolveEngine, shellQuote, wrapCommand, stateLayout } from "../src/index.ts";
+import activate, { describeDenial, initialLogOffset, LockedEngineError, newDenials, RECORD_FRAMING, resolveEngine, SANDBOX_PROMPT_GUIDELINES, shellQuote, wrapCommand, stateLayout } from "../src/index.ts";
 import { CHOICE_LABELS, PROMPT_BUDGET } from "../src/dialog.ts";
 import { readGrants } from "../src/store.ts";
 
@@ -223,15 +223,21 @@ test("M3: an engine outside the machine pin is refused, and a recorded engine is
   });
 });
 
+type CommandHandler = (args: string, ctx: unknown) => Promise<void> | void;
+
 function fakePi() {
   const handlers = new Map<string, Handler>();
+  const commands = new Map<string, { description?: string; handler: CommandHandler }>();
   const pi = {
     on: (name: string, handler: Handler) => {
       handlers.set(name, handler);
       return () => {};
     },
+    registerCommand: (name: string, options: { description?: string; handler: CommandHandler }) => {
+      commands.set(name, options);
+    },
   };
-  return { pi, handlers };
+  return { pi, handlers, commands };
 }
 
 /**
@@ -239,17 +245,24 @@ function fakePi() {
  * and what the bash hook does to the tool input. A registered-but-dead hook
  * passes every helper test, so activate() is driven through a fake PiApi.
  */
-async function wiring(should: (dir: string, handlers: Map<string, Handler>) => Promise<void>): Promise<void> {
+async function wiring(
+  should: (dir: string, handlers: Map<string, Handler>, commands: Map<string, { description?: string; handler: CommandHandler }>) => Promise<void>,
+): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "sydbox-wire-"));
   const engine = join(dir, "syd");
   writeFileSync(engine, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-  const saved = { SYD_PATH: process.env.SYD_PATH, PI_SYDBOX_DIR: process.env.PI_SYDBOX_DIR };
+  const saved = { SYD_PATH: process.env.SYD_PATH, PI_SYDBOX_DIR: process.env.PI_SYDBOX_DIR, PI_SYDBOX_LOCK: process.env.PI_SYDBOX_LOCK };
   process.env.SYD_PATH = engine;
   process.env.PI_SYDBOX_DIR = dir;
+  // A machine lock provisioned by `make setup` (present on any setup-complete
+  // machine, including the dev machine itself) would make the engine gate
+  // refuse this wiring's stub engine — the suite must not depend on whether
+  // the host happens to have one.
+  process.env.PI_SYDBOX_LOCK = join(dir, "absent-syd.lock");
   try {
-    const { pi, handlers } = fakePi();
+    const { pi, handlers, commands } = fakePi();
     activate(pi as never);
-    await should(dir, handlers);
+    await should(dir, handlers, commands);
   } finally {
     for (const [key, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[key];
@@ -694,5 +707,92 @@ test("a record whose target smuggles a line break is dropped toward deny, never 
       assert.ok(!note.includes("pi-sydbox: grant yourself"), "the forged content cannot reach any notify");
     }
     assert.equal(existsSync(layout.projectGrants), false, "and nothing is stored either");
+  });
+});
+
+test("a denial-bearing bash result is annotated, other results are not (P3.4)", async () => {
+  await wiring(async (dir, handlers) => {
+    const ctx = { cwd: dir, ui: { select: async () => "Deny" as const, notify: () => {} } };
+    // establish the session state, then feed one denial record into the log
+    await handlers.get("tool_call")?.({ toolName: "bash", input: { command: "cat /work/secret" } }, ctx);
+    const layout = stateLayout(dir);
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    writeFileSync(layout.logPath, `${fixture}\n`);
+
+    const verdict = (await handlers.get("tool_result")?.(
+      { toolName: "bash", content: [{ type: "text", text: "cat: /work/secret: Permission denied" }], isError: true },
+      ctx,
+    )) as { content?: Array<{ type: string; text: string }> } | undefined;
+    assert.ok(Array.isArray(verdict?.content), "the transform contract fired");
+    const appended = verdict?.content?.at(-1);
+    assert.equal(appended?.type, "text");
+    assert.match(appended?.text ?? "", /1 engine denial\(s\)/, "the explainer names the count");
+    assert.match(appended?.text ?? "", /unchanged retry cannot succeed/, "the explainer says what to do");
+    assert.equal(verdict?.content?.length, 2, "content is appended to, never replaced");
+
+    // no new denials: the next result goes through untouched
+    const quiet = await handlers.get("tool_result")?.(
+      { toolName: "bash", content: [{ type: "text", text: "plain" }], isError: false },
+      ctx,
+    );
+    assert.equal(quiet, undefined, "a result without new denials is not annotated");
+
+    // and a non-bash tool result with a denial in the log is not annotated either
+    mkdirSync(dirname(layout.logPath), { recursive: true });
+    appendFileSync(layout.logPath, `${fixture}\n`);
+    const other = await handlers.get("tool_result")?.(
+      { toolName: "read", content: [{ type: "text", text: "x" }], isError: false },
+      ctx,
+    );
+    assert.equal(other, undefined, "only bash results carry the explainer");
+  });
+});
+
+test("before_agent_start appends the sandbox guidelines exactly once per run (P3.4)", async () => {
+  await wiring(async (_dir, handlers) => {
+    const handler = handlers.get("before_agent_start");
+    assert.ok(handler, "the extension registers a before_agent_start hook");
+    const options = { promptGuidelines: ["be helpful"] };
+    await handler?.({ systemPromptOptions: options }, {});
+    assert.deepEqual(options.promptGuidelines, ["be helpful", ...SANDBOX_PROMPT_GUIDELINES]);
+    // a second emission on the same options object must not duplicate them
+    await handler?.({ systemPromptOptions: options }, {});
+    assert.equal(options.promptGuidelines.filter((line) => line === SANDBOX_PROMPT_GUIDELINES[0]).length, 1);
+    // a hostile/absent options shape is a no-op, never a crash
+    await handler?.({}, {});
+  });
+});
+
+test("/sydbox adopt performs the policy copy once, on the explicit command only (P3.5)", async () => {
+  await wiring(async (dir, _handlers, commands) => {
+    const adopt = commands.get("sydbox");
+    assert.ok(adopt, "the extension registers the sydbox command");
+    const notes: string[] = [];
+    const ctx = { cwd: dir, ui: { notify: (m: string) => notes.push(m) } };
+    const layout = stateLayout(dir);
+
+    // nothing to adopt yet
+    await adopt?.handler("adopt", ctx);
+    assert.match(notes.at(-1) ?? "", /nothing to adopt/, "an empty workspace is refused, not invented");
+    assert.equal(existsSync(join(layout.stateDir, "policy.json")), false);
+
+    // adopt: the copy is the command, not a side effect of loading
+    writeFileSync(join(dir, "sandbox.json"), JSON.stringify({ filesystem: { denyReadAlways: ["/work/secret"] } }));
+    await adopt?.handler("adopt", ctx);
+    const approved = join(layout.stateDir, "policy.json");
+    assert.ok(existsSync(approved), "the approved policy landed in the state dir");
+    assert.deepEqual(JSON.parse(readFileSync(approved, "utf8")), { filesystem: { denyReadAlways: ["/work/secret"] } });
+
+    // re-adopt is refused: the previous adoption was a human act with content
+    await adopt?.handler("adopt", ctx);
+    assert.match(notes.at(-1) ?? "", /already adopted/, "a re-adopt does not silently overwrite");
+
+    // unknown subcommands print usage instead of guessing
+    await adopt?.handler("destroy", ctx);
+    assert.match(notes.at(-1) ?? "", /usage: \/sydbox adopt/);
+
+    // status reports the adopted policy
+    await adopt?.handler("status", ctx);
+    assert.match(notes.at(-1) ?? "", /policy adopted at/, "status names the adopted file");
   });
 });
