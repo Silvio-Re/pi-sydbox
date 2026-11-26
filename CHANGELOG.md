@@ -2,8 +2,8 @@
 
 ## [Unreleased]
 
-- P1 provable claims (roadmap order P1; runner evidence
-  `docs/evidence/p1-20261125/`):
+- P1 provable claims (roadmap order P1; plain-VM evidence
+  `docs/evidence/p1-20261126-vm/`):
   - The D corpus is complete: d04-d14 join d01-d03, covering the design.md
     rows D4-D14 (hardlink of a denied source, `/proc/self/oom_score_adj`
     write, git HTTPS with `~/.netrc`, stat existence leak, symlink toward
@@ -35,11 +35,6 @@
   - p01 read-posture probe (corpus/p): a policy that grants only the
     scratch root denies a read outside it — the deny-by-default claim is
     now pinned to a measured verdict.
-  - `.github/workflows/corpus.yml`: workflow_dispatch-only, least
-    privilege; builds the pinned engine from source with the repo's own
-    scripts on the runner, runs the corpus, runs the gate, and uploads
-    the run directory. The landstrip golden set stays what it is; the
-    runner runs complement it per kernel band.
   - Citations cleaned: every instruction or proof citation in docs now
     points at a committed file (README before-you-trust pointer,
     environment.md release-path commands, the corpus profile-permission

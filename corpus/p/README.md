@@ -7,7 +7,7 @@ policy decision from an engine regression.
 - `p01-read-posture`: not a widening at all — the expected verdict is deny.
   It exists because a posture claim (deny by default outside the granted
   scratch root) is an enforcement claim like any other, so it is pinned to a
-  measured verdict (runner evidence: `docs/evidence/p1-20261125/`) rather
+  measured verdict (`docs/evidence/p1-20261126-vm/`) rather
   than asserted. Never compared against the golden set.
 
 Candidate (decision pending): make `~/.netrc` readable for the sandboxed git HTTPS

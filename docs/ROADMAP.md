@@ -30,6 +30,11 @@ coordination point between independent agents and the maintainer.
   rc=124/13). Any step that runs the engine happens in a plain Linux VM, a
   CI runner, or a plain terminal on the end machine, never inside a
   sandboxed pi session.
+- CI policy (2026-11-26, maintainer decision: git stays simple): the only
+  standing repository automation is `.github/workflows/ci.yml` (push and
+  pull request: unit + shellcheck). No additional GitHub workflows,
+  scheduled or dispatched, without an explicit maintainer decision;
+  recurring checks live as maintainer-run scripts under `tools/`.
 
 ENV column: `vm` = any autonomous agent in a Linux VM or CI runner;
 `machine` = the end-usage machine only (human runs agent-supplied commands
@@ -118,10 +123,13 @@ green.
    0002 and `expectations/README.md`): it still rejects a compiled
    profile that guards only truncation, but neither the golden row nor
    the gate may be cited as detecting an append bug.
-5. Runner evidence: build the pinned engine on the CI runner with the
-   repo's own scripts, run the whole corpus, commit the verdict tables
-   labeled with the runner kernel. Runner evidence is per-kernel-band and
-   complements, never replaces, the canonical 6.8 witness (M2).
+5. Second-band evidence: build the pinned engine on a plain Linux VM (or
+   any machine that is not the author's) with the repo's own scripts, run
+   the whole corpus and the gate, commit the verdict tables labeled with
+   the kernel band. Band evidence complements, never replaces, the
+   canonical 6.8 witness (M2, folded into M6). No CI workflow is involved
+   (CI policy above); an aborted runner experiment in P1 left no
+   committed evidence, and none is wanted.
 
 Gate P1: `make gate` green against the golden set; every bypass probe
 equal-or-stricter; both case-integrity rules enforced by the gate; no doc
@@ -138,13 +146,13 @@ cites gitignored paths as proof.
 2. `docs/support-matrix.md`: kernel band vs engine (below 7.2 means
    3.59.0 source build; 7.2+ opens the release path), pi and pi-web
    versions verified, OS claims limited to what is tested.
-3. Weekly drift cron (`.github/workflows/drift.yml`): poll crates.io,
-   distfiles and the GitLab tags for syd; poll npm for
-   `@earendil-works/pi-coding-agent` and `@agegr/pi-web`; on change, open
-   an issue; on a new syd, best-effort download plus corpus run on the
-   runner, verdicts posted in the issue. pi moves roughly weekly and syd
-   roughly monthly (measured 2026-11-25); the goal is that nobody does this
-   by hand.
+3. Weekly drift check, maintainer-run (per the CI policy): extend
+   `tools/weekly-check.sh` to poll crates.io, distfiles and the GitLab
+   tags for syd; poll npm for `@earendil-works/pi-coding-agent` and
+   `@agegr/pi-web`; print a one-line available-vs-pinned report and
+   stop. The maintainer runs it weekly or on demand; it opens no issues
+   and triggers no runs by itself. pi moves roughly weekly and syd
+   roughly monthly (measured 2026-11-25).
 4. Renovate or Dependabot for the two npm devDependencies and the
    SHA-pinned actions.
 
@@ -241,11 +249,11 @@ agent's own sandbox refuses. The step fails rather than records when every D
 case allowed — such a capture would prove the deny rule inert, not the engine —
 and it fails a deny whose engine record does not name the probed path.
 
-The first capture (2026-11-25 14:30) was withdrawn: D1 and D3 were `deny`
-because the case scripts' own `/dev/null` redirect was denied, so neither case
-ran the operation it names, and the case scripts no longer redirect there. D2
-came back `deny` — the reported 0.20 append bug did not reproduce on 0.20.29 —
-so the predicted `allow` in `design.md:95` was corrected against the record. Re-run
+The first capture (2026-11-25 14:30) was withdrawn: D1 and D3 were `deny` because
+the case scripts' own `/dev/null` redirect was denied, so neither case ran the
+operation it names, and the case scripts no longer redirect there. D2 came back
+`deny` — the reported 0.20 append bug did not reproduce on 0.20.29 — so the
+predicted `allow` in `design.md:95` was corrected against the record. Re-run
 `bash agent_dir/spike/verdict.sh` to produce the rows and the capture.
 
 Captured 2026-11-25 14:34 (`agent_dir/spike/logs/verdict-20261125-143439`):
@@ -303,7 +311,7 @@ merged into another order's session. One row per order. Do not reorder rows.
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
-| P1 provable claims | vm | M1 | blocked (jobs 1-4 done: citation sweep, corpus d04-d14 + p01, make gate, corpus.yml; job 5 runner evidence not captured: agent authority ends at the API surface, no workflow-dispatch or artifact-download tool, dispatch requires the workflow on main which a PR merge must authorize) | PR #2 (p1-provable-claims); docs/evidence/p1-20261125/ pending the dispatched run |
+| P1 provable claims | vm | M1 | blocked (jobs 1-4 done: citation sweep, corpus d04-d14 + p01, make gate; job 5, the plain-VM engine-evidence pass over the whole corpus and the gate, is still owed) | PR #2 (p1-provable-claims) |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |

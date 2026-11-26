@@ -29,7 +29,8 @@ fi
 
 # created up front: the gperf section writes into $workdir long before the
 # libseccomp fetch below did, and curl cannot open its output in a missing
-# directory (run 45710973356, all three mirrors, write error after first bytes)
+# directory (observed 2026-11-25: a write error right after the first
+# fetched bytes, on every mirror)
 mkdir -p "$workdir"
 tools="$workdir/tools"
 if ! command -v gperf >/dev/null 2>&1 && [ ! -x "$tools/bin/gperf" ]; then
@@ -37,10 +38,10 @@ if ! command -v gperf >/dev/null 2>&1 && [ ! -x "$tools/bin/gperf" ]; then
   gtar="$workdir/gperf-$gperf_version.tar.gz"
   if [ ! -f "$gtar" ]; then
     # Ordered mirror list with connect timeouts: ftpmirror.gnu.org's redirect
-    # can land on a host CI runners cannot reach (2026-11-25, GitHub runner
-    # stuck 133 s on mirrors.kernel.org then exiting 1; evidence
-    # docs/evidence/p1-runner-45710211881/). ftp.gnu.org first, the
-    # redirector last, and the pinned sha256 is checked regardless of source.
+    # can land on a host that stalls or refuses the connection (observed
+    # 2026-11-25: one mirror stalled 133 s, then curl exited 1).
+    # ftp.gnu.org first, the redirector last, and the pinned sha256 is
+    # checked regardless of source.
     gperf_sha256="588546b945bba4b70b6a3a616e80b4ab466e3f33024a352fc2198112cdbb3ae2"
     ok=""
     for gurl in \
