@@ -2,48 +2,66 @@
 
 Plan of record for taking this repository from a working adapter to a final
 product: **a stranger with a supported machine goes from `git clone` to
-sandboxed pi following only this repository.** Written 2026-11-25 after a
-three-part external assessment (code review, pi-web integration audit,
-maintainability analysis). Nothing here replaces existing design: `design.md`
-keeps the phased migration plan (its phases 3-5 are orders M4-M7 below);
-this file sequences executable work orders on top of it and is the
-coordination point between independent agents and the maintainer.
+sandboxed pi following only this repository.** Nothing here replaces
+existing design: `design.md` keeps the phased migration plan (its phases
+3-5 are orders M4-M7 below); this file sequences executable work orders on
+top of it and is the coordination point between independent agents and
+the maintainer.
 
-## Operating rules for workers
+## How this repo is worked
 
-- The repository is the single source of truth and the common ground. Every
-  order starts and ends here: read, work on a branch named after the order
-  id, make the gate pass, update the Ledger, merge to main.
+Three layers are kept apart on purpose:
+
+1. **Product environment requirements** (kernel bands, engine provenance,
+   toolchain, build limits): canonical in `docs/environment.md`. This file
+   restates them only as far as sequencing needs.
+2. **System design and code claims**: `docs/design.md`, the ADRs under
+   `docs/decisions/`, and the code and tests. Enforcement claims link
+   committed evidence.
+3. **Agent coordination facts** (how autonomous agents work on this repo):
+   only the subsections below, and never mixed into the product docs.
+
+### Repository rules
+
+- The repository is the single source of truth and the common ground.
+  Every order starts and ends here: read, work on a branch named after
+  the order id, make the gate pass, update the Ledger, merge to main.
 - One agent, one order, one commit series. Do not batch unrelated orders.
 - Evidence-first: every enforcement or UX claim added to docs must link a
-  file or log that is committed. `agent_dir/` is gitignored; nothing may cite
-  it as proof.
-- Gates are pass/fail. A failed gate stops the order: record the failure in
-  the Ledger and stop; do not debug past a gate.
-- Checks must pass locally before merge, with the exact commands
-  `.github/workflows/ci.yml` defines (`npm run ci`, shellcheck on the
-  workflow's file set); the worker records the counts in the PR. GitHub
-  Actions are disabled (2026-11-26, maintainer decision); GitHub runs
-  nothing, and `ci.yml` stays only as the definition of the commands.
+  file or log that is committed. `agent_dir/` and `results/` are
+  gitignored; durable evidence lives under `docs/evidence/`, and nothing
+  may cite a gitignored path as proof.
+- Gates are pass/fail. A failed gate stops the order: record the failure
+  in the Ledger and stop; do not debug past a gate, and never tune a case
+  or an expectation to make a gate pass.
 - After finishing or failing: update the Ledger (status, evidence link,
   date), add a CHANGELOG `[Unreleased]` entry when the change is
   user-visible, merge.
-- Environment constraint (verified, see `environment.md` Limits): the
-  engine cannot run inside the landstrip sandbox (memfd write denied,
-  rc=124/13). Any step that runs the engine happens in a plain Linux VM
-  or a plain terminal on the end machine, never inside a
-  sandboxed pi session.
-- CI policy (2026-11-26, maintainer decision: git stays simple): GitHub
-  Actions are disabled on this repository; nothing runs on GitHub. The
-  check commands live in `.github/workflows/ci.yml` (kept as the
-  definition) and run locally before merge; recurring checks live as
-  maintainer-run scripts under `tools/`. Re-enabling or adding any
-  automation requires an explicit maintainer decision.
 
-ENV column: `vm` = any autonomous agent in a Linux VM (no CI; see the CI
-policy);
-`machine` = the end-usage machine only (human runs agent-supplied commands
-in a plain terminal).
+### Checks and automation (maintainer decision 2026-11-26: git stays simple)
+
+- GitHub Actions are disabled on this repository; GitHub runs nothing.
+- `.github/workflows/ci.yml` stays in the repo only as the definition of
+  the check commands (`npm run ci`, shellcheck on the workflow's file
+  set). They must pass locally before merge; the worker records the
+  counts in the PR.
+- Recurring checks live as maintainer-run scripts under `tools/`.
+  Re-enabling or adding any automation requires an explicit maintainer
+  decision.
+
+### Agent surface notes (coordination constraints, not product facts)
+
+- Repository write access is the GitHub API surface (file push, PR,
+  merge). There is no ref deletion on it: branches are deleted by the
+  maintainer in the UI or from a git-capable client. Close finished
+  orders with a squash merge so debugging history never lands on main.
+- File edits through that surface are full-file writes. While an order is
+  open on its branch, nobody else edits the files it touches: a
+  full-content push from elsewhere can silently revert the branch's
+  work. Wait for the merge or coordinate through the maintainer.
+- ENV column: `vm` = any autonomous agent in a Linux VM; `machine` = the
+  end-usage machine only (a human runs agent-supplied commands in a
+  plain terminal).
 
 ## v1.0 definition of done
 
@@ -54,108 +72,63 @@ in a plain terminal).
 3. pi-web UX verified in the soak: prompts render, auto-deny fires,
    budget holds, grants are auditable via CLI.
 4. The local pi contract checks and the maintainer-run drift check pass;
-   the maintenance SOP is
-   documented (kernel-band engine policy included).
+   the maintenance SOP is documented (kernel-band engine policy included).
 5. This roadmap updated in place with shipped status and tagged v1.0.0.
 
-## Orders
+## Completed orders (records)
 
-### P0 — fix the record (vm; no precondition)
+### P0 — fix the record: DONE (PR #1, merge commit e051b4b)
 
-Things that are silently wrong today. All small; all inputs verified in the
-2026-11-25 assessment.
+The dialog option is pi's real `timeout`, not `timeoutMs`, with the
+measured auto-deny: 120 070 ms observed at 120 000 requested (headless
+RPC harness `tools/rpc-dialog-probe/`). `KNOWN_FIELDS` covers all five
+fields present in the committed captures (`fs`, `mode`, `oflags`,
+`rflags`, `proto`), with a strict-mode fixture test that keeps the
+"captured" claim honest. Empty-glob denial targets are refused by both
+the mapper and the grant store. The engine self-check runs under a 10 s
+timeout; record content is JSON-quoted, truncated and framed. A stale-doc
+sweep fixed the README count and conflicting wording. Evidence:
+`docs/evidence/p0-auto-deny-20261125/`.
 
-1. **Auto-deny is dead config.** pi's dialog option is `timeout`, not
-   `timeoutMs` (pi-coding-agent 1.6.0, `src/core/extensions/types.ts`,
-   `ExtensionUIDialogOptions`; RPC: `docs/rpc-extension-ui.md`). `dialog.ts`
-   sends `{ timeoutMs }`, which every mode ignores: a denial prompt blocks
-   until answered in both TUI and pi-web. Fix `UiPort`/`choose()` to send
-   `timeout`, then run the never-executed measurement: drive pi in RPC mode
-   with a small JSONL client, leave a `select` unanswered, observe the
-   agent-side auto-resolve, and set `AUTO_DENY_MS` from the measurement.
-   Replace the PROVISIONAL wording in `dialog.ts` and `design.md` with the
-   measured value and where it was measured.
-2. **Schema claim is false.** `KNOWN_FIELDS` says "syd 3.59.0 (captured)"
-   but lacks `fs`, `mode`, `oflags`, `rflags`, all present in
-   `test/fixtures/capture/*.jsonl`. Add the four fields and a test that
-   parses every committed fixture in strict mode: strict must be clean on
-   the repo's own captures.
-3. **Empty-glob guard.** A denial whose path normalizes to only asterisks
-   (`/*`, `/**`, `/***`) yields `allow/<cats>+` with an empty target.
-   Reject empty targets in `recordToGrant` (return null) and in
-   `appendGrant` (GrantStoreError).
-4. **`gateEngine` timeout.** `spawnSync` for the engine self-check gets a
-   10 s `timeout`; `error.timeout` is treated as a failed check (blocked,
-   named reason), never as a pass.
-5. **Untrusted record content.** Paths and addrs in `describeDenial` and
-   the notify lines are chosen by the sandboxed workload. Escape or
-   JSON-quote them, truncate long values, and add one constant framing
-   line (record content is chosen by the contained process) so a crafted
-   filename cannot forge notification lines or bait a tier choice.
-6. **Doc staleness sweep.** README test count (95 is stale; use the live
-   count), `design.md` phase-2 store-schema sentence conflicts with
-   `store.ts`'s sibling-file decision, `corpus/README.md` shows `-m`
-   examples while the verified form is `-P`, and the
-   `KNOWN_FIELDS_VERSION` wording.
+### M1 — landstrip golden capture: DONE (35144ce; ledger 2026-11-25)
 
-Gate P0: `npm run ci` green; the RPC harness log shows the select
-auto-resolving at the measured `AUTO_DENY_MS`; strictly-clean fixture test
-green.
+`expectations/landstrip.tsv` records the landstrip 0.20.29 verdicts for
+D1-D3 (all `deny`, each with an engine record naming the probed path).
+Sanitized capture, probe scripts and both cited verdict runs live under
+`docs/evidence/m1-20261125/`; the corpus profile reduction rationale is
+ADR 0002. The first capture was withdrawn: the cases' own `/dev/null`
+redirects were what got denied. That defect is why
+`expectations/README.md` carries the two case-shape rules (no redirects
+in the command under test; a deny needs a record on the probed path) and
+why the capture step enforces them. Regeneration procedure:
+`expectations/README.md`.
 
-### P1 — make the claims provable (vm; M1 required for the gate)
+### P1 — provable claims: DONE (PR #2, squash-merged d899865)
 
-1. Verify the evidence handover: M1 has already landed the sanitized
-   spike material in `docs/evidence/` (verdict logs, build records,
-   probe scripts, the capture). After this order, `grep -r agent_dir
-   docs src` may only return historical mentions, never citations as
-   proof; fix any citation that remains.
-2. Complete the D corpus per `design.md`: D7 stat existence leak, D8
-   symlink in allowed dir pointing at a denied target, D9
-   `/proc/self/root` traversal, D10 mmap MAP_SHARED on denied file, D11
-   hardlink inside allowWrite at denied file, D12 rename across the
-   allowed/denied boundary, D13 TOCTOU swap, D14 prompt storm. Case
-   contract in `corpus/README.md`; each case prints one verdict.
-3. Add a P-case read-posture probe: with an empty policy, attempt reads
-   outside the allowlist (a home file) and document what the default
-   denies; this pins the deny-by-default posture claim.
-4. Write `make gate`: compare `results/<label>/summary.tsv` against the
-   committed golden expectations (`expectations/*.tsv`, format in
-   `expectations/README.md`), rule equal-or-stricter, fail on wider. Two
-   case-integrity rules from M1 are part of the gate: (a) a deny verdict
-   only counts when its engine record names the case's probed path —
-   M1's first capture had two of three D verdicts measuring their own
-   `/dev/null` redirect; (b) the D2 golden row is `deny` on both engines,
-   not a differential (the 0.20.29 append bug did not reproduce; see ADR
-   0002 and `expectations/README.md`): it still rejects a compiled
-   profile that guards only truncation, but neither the golden row nor
-   the gate may be cited as detecting an append bug.
-5. Second-band evidence: execution deferred to the P3 gate machine. The
-   canonical 6.8 engine-backed corpus plus `make gate` run happens on the
-   author's machine (M6 4b, M2 folded there); the second band is P3's
-   gate machine, which by definition is not the author's and already
-   builds the engine in its setup step. P1 closes on the strength of jobs
-   1-4: the complete corpus with integrity-recorded cases, the gate whose
-   comparison and integrity rules are verified locally against synthetic
-   scenarios, and no automation traces. The first full engine-backed
-   corpus pass after P1 may surface case results needing reading; that
-   reading happens on the P3 gate machine and is recorded there as band
-   evidence. Worker VMs with a read-only 1 GiB cgroup memory cap cannot
-   build the engine (verified 2026-11-26: rustc is SIGKILLed at the cap
-  in every configuration tried); do not retry there.
+The D corpus is complete: d04-d14 join d01-d03 per the design table,
+plus the p01 read-posture probe. `make gate` (`tools/gate.sh`) compares
+run summaries against `expectations/*.tsv` with equal-or-stricter
+semantics and enforces the two case-integrity rules
+(`tools/case-integrity.sh`, shared with the capture step). The
+agent_dir citation sweep repointed every proof at committed paths. The
+d06 netrc case and the harness TLS git server were fixed (pkt-line
+lengths, Content-Length) and the allow path validated end to end. The
+deferral (P1.5): the engine-backed corpus + gate run happens on the P3
+gate machine (Gate P3), because VMs under a ~1 GiB RAM cap cannot build
+the engine at all (`docs/environment.md`, Limits). Local checks at
+merge: 119 tests / 0 fail, shellcheck clean on the ci.yml file set.
 
-Gate P1: `make gate` green against the golden set; every bypass probe
-equal-or-stricter; both case-integrity rules enforced by the gate; no doc
-cites gitignored paths as proof.
+## Open orders
 
-### P2 — contract the hosts (vm; after P0)
+### P2 — contract the hosts (vm; ready)
 
-1. pi contract checks, local (per the CI policy): devDependency on the real
-   `@earendil-works/pi-coding-agent`; assert `createLocalBashOperations`
-   is an exported callable (it powers `user_bash`), assert the dialog
-   options accept `timeout`, assert the event names `tool_call`,
-   `tool_result`, `user_bash` exist in the API surface. A future
-   `timeoutMs`-class break fails the local contract check before any
-   merge.
+1. pi contract checks, local (per the CI policy): devDependency on the
+   real `@earendil-works/pi-coding-agent`; assert
+   `createLocalBashOperations` is an exported callable (it powers
+   `user_bash`), assert the dialog options accept `timeout`, assert the
+   event names `tool_call`, `tool_result`, `user_bash` exist in the API
+   surface. A future `timeoutMs`-class break fails the local contract
+   check before any merge.
 2. `docs/support-matrix.md`: kernel band vs engine (below 7.2 means
    3.59.0 source build; 7.2+ opens the release path), pi and pi-web
    versions verified, OS claims limited to what is tested.
@@ -170,10 +143,9 @@ cites gitignored paths as proof.
    SHA-pinned actions.
 
 Gate P2: a drill on a branch that breaks one contract point fails the
-   local contract check before merge.
-before merge.
+local contract check before merge.
 
-### P3 — clone-to-usable (vm; after P1 gate and P2.2)
+### P3 — clone-to-usable (vm; after P1 and P2.2)
 
 1. `make setup` (wrapping the tools/setup scripts): detect the kernel
    band, run the release path (verify + install) or the source path
@@ -187,8 +159,8 @@ before merge.
    local-path plugin install, first-run walkthrough (first prompt, tier
    meanings, budget), refusal-message troubleshooting table, security
    caveat linking committed evidence.
-3. Grants/policy CLI: `list`, `revoke`, effective-policy view, per project
-   and global. No GUI in v1.0.
+3. Grants/policy CLI: `list`, `revoke`, effective-policy view, per
+   project and global. No GUI in v1.0.
 4. Agent-facing feedback: confirm the pi extension API's tool-result
    transform contract, then annotate a blocked or denial-bearing bash
    result with a one-line explainer; add a system-prompt section telling
@@ -207,7 +179,7 @@ band, land in `docs/evidence/` (this run completes the P1 engine pass and
 provides the second-band evidence); the 30-minute human measurement on a
 real second machine trails this gate and lands in the Ledger.
 
-### P4/M4-M7 — soak and decommission (machine; after P0 and P3)
+### P4/ M4-M7 — soak and decommission (machine; after P0 and P3)
 
 M4 flip drills (twice), M5 soak (the design.md phase-3 gate: 5-7 days of
 daily-driver work in pi-web with the checklist below), M6 AppArmor restore,
@@ -221,116 +193,54 @@ report lands in `docs/` (dates, counts, exceptions).
 Gate P4: soak report committed; rollback drill executed once; landstrip
 out of the runtime chain.
 
+#### M2 — canonical kernel-band witness: FOLDED into M6
+
+No standalone machine session. The tasks ride the first machine session
+reaching a plain terminal (the soak can take them early, M6 4b is the
+deadline): pedigree check via `bash tools/setup/03-smoke.sh
+~/.local/opt/syd-3.59.0/syd`, a full corpus run committed labeled
+canonical (kernel 6.8, pinned engine), and the `~/.local/opt/syd.lock`
+vs `syd.lock` diff (paths and sha256).
+
+#### M3 — pi-web auto-deny confirmation: FOLDED into M5
+
+No standalone machine session; the tasks ride the soak. During the soak,
+launch the daily pi-web, trigger one denial via a bash call, leave the
+prompt unanswered, observe the auto-deny (countdown if rendered), and
+record the observed value in `docs/environment.md`; if the browser layer
+diverges from the headless measurement, file it as a bug, not a doc
+update.
+
 ### P5 — release (vm; after P4)
 
 Freeze the support matrix, write release notes, tag v1.0.0, update this
 file's Ledger to shipped. Optional and maintainer's call: announce to the
 syd and pi communities.
 
-### M1 — landstrip golden capture + evidence handover (machine; CRITICAL)
-
-**Deadline: before landstrip is decommissioned (M7). This is the only
-machine order another order strictly depends on.** It cannot be recreated
-later: the golden comparison baseline dies with the landstrip
-installation, and `make gate` (P1.4) cannot enforce equal-or-stricter
-without it.
-
-Plain terminal, in the checkout:
-
-1. Locate the phase-0 landstrip profile (migration directory, see
-   `design.md` phase 0) and commit it as `corpus/profiles/landstrip.json`.
-2. Capture the golden set with the corpus harness:
-   `bash corpus/run.sh --label landstrip-golden --profile-template corpus/profiles/landstrip.json --engine-cmd "<landstrip binary> -p \$PROFILE_FILE --"`.
-3. Convert `results/landstrip-golden/summary.tsv` into
-   `expectations/*.tsv` rows per the format in `expectations/README.md`
-   and commit.
-4. Copy the spike evidence into the repo: verdict logs (including the
-   fd-forge verdict `20261125-105950` and probe-19 verdict
-   `20261124-221518`), the `<SYD-BUILD>` record, and the probe scripts the
-   code comments cite, into `docs/evidence/`, with host paths sanitized
-   consistently (record the sanitization rule in `docs/evidence/README.md`).
-
-Gate M1: golden TSV and `docs/evidence/` committed and referenced by
-docs; landstrip verdicts recorded for every existing D case.
-
-State (2026-11-25): steps 1 and 4 are done — `corpus/profiles/landstrip.json`
-with its reduction rationale in `docs/decisions/0002-corpus-profile.md`, and
-`docs/evidence/m1-20261125/` holding the phase-0 policy, the engine identity,
-the two cited verdict runs and the probes the tracked code comments cite.
-Steps 2-3 are one handover: `bash agent_dir/spike/verdict.sh` runs every step
-and captures the golden set last (`step_landstrip_golden`, probe
-`agent_dir/spike/25-landstrip-golden.sh`), writing `expectations/landstrip.tsv`
-and the sanitized `docs/evidence/m1-*/capture/`. It cannot be automated from an
-agent session: `landstrip run` and `landstrip check` clone namespaces, which the
-agent's own sandbox refuses. The step fails rather than records when every D
-case allowed — such a capture would prove the deny rule inert, not the engine —
-and it fails a deny whose engine record does not name the probed path.
-
-The first capture (2026-11-25 14:30) was withdrawn: D1 and D3 were `deny` because
-the case scripts' own `/dev/null` redirect was denied, so neither case ran the
-operation it names, and the case scripts no longer redirect there. D2 came back
-`deny` — the reported 0.20 append bug did not reproduce on 0.20.29 — so the
-predicted `allow` in `design.md:95` was corrected against the record. Re-run
-`bash agent_dir/spike/verdict.sh` to produce the rows and the capture.
-
-Captured 2026-11-25 14:34 (`agent_dir/spike/logs/verdict-20261125-143439`):
-D1, D2 and D3 all `deny`, each with a denial record naming `<scratch>/secret`,
-so the rows in `expectations/landstrip.tsv` now measure the rule each case names.
-D2 stays `deny` — the earlier "0.20 allowed the append" report did not reproduce.
-
-### M2 — canonical kernel-band witness (machine; FOLDED into M6)
-
-Folded 2026-11-25 to keep machine work to the strict necessary: this is
-minutes of scripted plain-terminal work, M6's 4b step already re-runs the D
-corpus green on the same 6.8 machine, and nothing on the board depends on
-this row. No standalone machine session; the tasks ride the first machine
-session that reaches a plain terminal (the soak can take them early, M6 4b
-is the deadline): pedigree check via `bash tools/setup/03-smoke.sh
-~/.local/opt/syd-3.59.0/syd`, a full corpus run committed labeled canonical
-(kernel 6.8, pinned engine), and the `~/.local/opt/syd.lock` vs `syd.lock`
-diff (paths and sha256).
-
-### M3 — pi-web auto-deny confirmation (machine; FOLDED into M5)
-
-Launch the daily pi-web, trigger one denial via a bash call, leave the
-prompt unanswered, and observe the auto-deny (countdown if rendered).
-Record the observed value in `docs/environment.md`; if the browser layer
-diverges from the headless measurement, file it as a bug, not a doc
-update.
-
-Folded 2026-11-25 to keep machine work to the strict necessary: the soak
-(M5) already must verify pi-web auto-deny (definition of done item 3), so
-a standalone session duplicates it, and nothing on the board depends on
-this row. The task above rides the soak session unchanged.
-
 ## Sequencing
 
-Legend: lane-code P0 -> P2 -> P3; lane-evidence M1 -> P1 -> P1 gate ->
-P3 README links.
-
-- M1 first of all machine work (hard deadline, blocks P1's gate).
-- P0 starts immediately and in parallel with M1; it needs nothing.
-- P1 waits only on M1's files; P2 waits on P0 (0.1 feeds 2.1).
-- P3 waits on the P1 gate (README links evidence that exists) and P2.2
-  (the support matrix it points to).
-- M2 and M3 folded into M6 and M5 respectively (no standalone machine
-  sessions); M4/M5 after P3 (setup + README);
-  M6 after M4; M7 last (destroying the golden source M1 preserved).
-- Critical path: M1 and P0 in parallel, then P1, P3, M4-M7 soak, P5.
+- Done: P0, M1, P1.
+- P2 next; it needs nothing further. P3 waits on P1's deliverables and
+  P2.2 (the support matrix the README will point to).
+- M4-M7 machine sessions after P3 (setup + README done). M2 and M3 tasks
+  ride M6 and M5 respectively. M7 last: it destroys the golden source
+  M1 preserved.
+- Critical path: P2 -> P3 -> M4-M7 soak -> P5.
 
 ## Ledger
 
 Update status to `doing`, `blocked (reason)`, `done (evidence link)` or
-`failed (reason)`. `folded (into <order>)` closes an order whose tasks were
-merged into another order's session. One row per order. Do not reorder rows.
+`failed (reason)`. `folded (into <order>)` closes an order whose tasks
+were merged into another order's session. One row per order. Do not
+reorder rows.
 
 | order | env | depends on | status | evidence |
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
-| P1 provable claims | vm | M1 | done (jobs 1-4: citation sweep repointed to committed paths, corpus d04-d14 + p01 on top of the d01-d03 probes, `make gate` + case-integrity verified on synthetic runs, d06 netrc case and harness TLS git server fixes, all committed) | corpus/d/ and corpus/p/, `tools/gate.sh` + `tools/golden-tsv.sh` + `tools/case-integrity.sh`, `expectations/`, d06 + run.sh validation in PR #2; the engine-backed corpus + gate run lands at the P3 gate machine (roadmap P1.5) |
+| P1 provable claims | vm | M1 | done (PR #2, squash-merged d899865) | `corpus/d/` + `corpus/p/`, `tools/gate.sh` + `tools/golden-tsv.sh` + `tools/case-integrity.sh`, `expectations/`; engine-backed corpus + gate run lands at Gate P3 |
 | P2 host contracts and drift automation | vm | P0 | todo | |
-| P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
+| P3 clone-to-usable | vm | P1, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
 | M3 pi-web auto-deny confirm | machine | P0.1 | folded (into M5) | tasks listed in its order text |
 | M4 flip drills | machine | P3 | todo | |

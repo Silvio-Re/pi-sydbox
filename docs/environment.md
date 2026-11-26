@@ -17,10 +17,9 @@ sudo apt install build-essential pkg-config curl xz-utils
 - `libseccomp-dev` (the apt package, 2.5.5 on this guest) is not enough to build
   engine 3.59.0: the link fails with `undefined symbol: seccomp_export_bpf_mem`,
   which upstream added after 2.5.5. The engine build therefore runs against a
-  local libseccomp 2.6.0 built by the tracked `tools/setup/build-libseccomp.sh`
-  (the agent_dir copies from the spike are its untracked historical twins). The apt package
-  stays installed for `pkg-config` and for anything else wanting the system
-  library.
+  local libseccomp 2.6.0 built by the tracked `tools/setup/build-libseccomp.sh`.
+  The apt package stays installed for `pkg-config` and for anything else
+  wanting the system library.
 - Rust toolchain through rustup (`~/.cargo/bin/cargo`), floor 1.88 as declared
   by the engine workspace's `rust-version`. Built here with `rustc 1.98.1`,
   `cargo 1.98.1`, rustup 1.29.1. A rebuilt machine installs stable and records
@@ -29,6 +28,11 @@ sudo apt install build-essential pkg-config curl xz-utils
   passes `--locked`, so dependency versions are upstream's.
 - `scdoc` is not needed: man pages are only built by `make`, not by
   `cargo build --release`.
+- Dev checks (no engine involved): Node 22 with `npm ci`, and
+  `shellcheck` for the script set; `.github/workflows/ci.yml` records the
+  exact commands and the file set. Nothing runs on GitHub (repository
+  roadmap, checks-and-automation policy), so these are run locally before
+  any merge.
 
 ## Engine, two paths
 
@@ -51,8 +55,8 @@ older tarballs, so the older engine can only come from source.
 ### Release path (kernel ≥ 7.2)
 
 ```bash
-# 1. verification chain (the tracked tools are the durable ones; their
-#    download cache is agent_dir/cache/, a functional path, gitignored):
+# 1. verification chain (its download cache is agent_dir/cache/, a
+#    gitignored working path):
 bash tools/verify-artifact.sh            # checks the cache first, downloads the
                                          # pinned tarball if needed, prints the
                                          # curl commands to fetch anything
@@ -64,9 +68,8 @@ bash tools/setup/install.sh                    # -> ~/.local/opt/syd-<version>/s
 The signature is minisign, not OpenPGP: `gpg --verify` cannot succeed on it
 whatever key is imported. The tracked `tools/minisign-verify.py` performs the
 check (key id `b1e47bc29cc65132`, algorithm `Ed`); the trust anchor is
-`tools/syd-release.pub`. (The `02-verify.sh` / `minisign_verify.py` files under
-agent_dir were the spike's untracked working twins; the tracked tools above are
-the durable ones, run by `tools/verify-artifact.sh`.)
+`tools/syd-release.pub`, and `tools/verify-artifact.sh` runs the whole
+chain.
 
 ### Source path (kernel < 7.2)
 
@@ -258,6 +261,11 @@ Other:
   `~/.local/opt/` is the durable artifact, and the script rebuilds the rest.
 - Building on the shared-folder checkout is avoided on purpose (thousands of
   small writes); keep the workdir on a local filesystem.
+- The engine source build needs real RAM: it completed on a 7 GB machine;
+  in a 1 GiB cgroup-capped VM, `rustc` is oom-killed at the cap in every
+  configuration tried (2026-11-26: opt-level 0-3, thin LTO off, single
+  codegen thread, `-j1`). Treat 4 GB as the practical floor, and do not
+  attempt the build in memory-capped containers.
 - The engine cannot be smoke-tested from inside a landstrip session: the child
   engine writes its in-memory exec image to `/memfd:syd`, the host sandbox
   denies that write, and cases then time out (`rc=124`) or fail with `EACCES`
