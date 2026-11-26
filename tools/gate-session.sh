@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # gate-session.sh — one-command scripted part of the gate machine session
 # (docs/ROADMAP.md, P4; carries the P3 gate, the M2 canonical witness and the
-# M6 state capture). Run from a FRESH clone, in a plain terminal on the gate
-# machine (kernel 6.x band, x86_64, >= 4 GB RAM, build tools present):
+# M6 state capture). Run from ANY checkout of the repository — including one
+# on a noexec mount such as a VirtualBox shared folder — in a plain terminal
+# on the gate machine (kernel 6.x band, x86_64, >= 4 GB RAM, build tools):
 #
-#   git clone https://github.com/Silvio-Re/pi-sydbox.git ~/pi-sydbox-gate
-#   cd ~/pi-sydbox-gate && bash tools/gate-session.sh
+#   cd /path/to/your/pi-sydbox && bash tools/gate-session.sh
 #
+# (the script pulls the checkout --ff-only and stages a fresh NATIVE clone
+# under $HOME itself, so where the checkout lives does not matter)
 # Everything is captured under --work (default ~/pi-sydbox-gate-session-<ts>):
 #   0. preflight  : tools present, kernel + band, versions, timestamps
 #   1. backup     : the maintainer engine is copied to ~/.local/opt/syd-3.59.0
@@ -32,19 +34,31 @@
 #   --skip-setup   engine + machine lock already provisioned (skip step 2's
 #                  make setup; npm ci still runs, it is idempotent)
 #   --phase-4b     post-reboot verification + repack, nothing destructive
-#   --work DIR     evidence directory (default below)
+#   --work DIR     evidence directory (default below; --phase-4b without
+#                  --work reuses the latest existing session dir)
+#
+# Staging: invoke the script from ANY checkout, including one on a noexec
+# mount (e.g. a VirtualBox shared folder — the share carries no exec bit, so
+# npm ci bin links, corpus case exec and the probe cwd break there). If the
+# invocation directory is a git work tree, the script first pulls it
+# (--ff-only, aborts if that fails) and then runs the whole session from a
+# FRESH NATIVE CLONE of it under $HOME (committed state only — the staged
+# clone is what the evidence records). If it is not a git work tree, the
+# session runs in place. The packed tarball is copied back next to the
+# invoking checkout, best-effort.
 #
 # Exit: 0 every scripted phase green (tar path printed); 1 any phase red
 # (the evidence dir is packed anyway); 2 usage.
 set -uo pipefail
 
 work="$HOME/pi-sydbox-gate-session-$(date +%Y%m%d-%H%M%S)"
+work_given=0
 skip_setup=0
 phase_4b=0
 usage() { sed -n '3,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --work)       work="${2:?--work needs a value}"; shift 2 ;;
+    --work)       work="${2:?--work needs a value}"; work_given=1; shift 2 ;;
     --skip-setup) skip_setup=1; shift ;;
     --phase-4b)   phase_4b=1; shift ;;
     -h|--help)    usage; exit 0 ;;
@@ -52,9 +66,44 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-cd "$repo_root" || exit 2
+# --phase-4b without --work: append to the latest existing session dir.
+if [ "$work_given" -eq 0 ] && [ "$phase_4b" -eq 1 ]; then
+  latest="$(find "$HOME" -maxdepth 1 -type d -name 'pi-sydbox-gate-session-*' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-)"
+  if [ -n "$latest" ] && [ -d "$latest" ]; then
+    work="$latest"
+    printf 'reusing session dir: %s\n' "$work"
+  fi
+fi
+
+src_root="$(pwd -P)"
+stage=""
 mkdir -p -- "$work/logs" "$work/results" || exit 2
+if git -C "$src_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! git -C "$src_root" pull --ff-only >"$work/logs/source-pull.log" 2>&1; then
+    printf 'source checkout: git pull --ff-only failed — fix it (main, clean) and re-run\n' >&2
+    cat "$work/logs/source-pull.log" >&2
+    exit 1
+  fi
+  stage="$HOME/pi-sydbox-gate-clone"
+  rm -rf -- "$stage"
+  if ! git clone --quiet "$src_root" "$stage" >"$work/logs/stage-clone.log" 2>&1; then
+    printf 'staging clone failed\n' >&2
+    cat "$work/logs/stage-clone.log" >&2
+    exit 1
+  fi
+  repo_root="$stage"
+else
+  repo_root="$src_root"
+fi
+if [ -n "$stage" ]; then
+  { printf 'source checkout: %s\n' "$src_root"
+    printf 'staged clone:   %s\n' "$repo_root"
+    printf 'source HEAD: %s\n' "$(git -C "$src_root" rev-parse HEAD 2>&1)"
+    printf 'clone HEAD:  %s\n' "$(git -C "$repo_root" rev-parse HEAD 2>&1)"
+  } >"$work/staging.txt"
+  cat "$work/staging.txt"
+fi
+cd "$repo_root" || exit 2
 
 failures=0
 verdicts=""
@@ -198,6 +247,9 @@ fi
 # --- 7. pack -------------------------------------------------------------------
 printf '\n== verdicts ==\n%s' "$verdicts" | tee "$work/verdicts.txt"
 tar czf "$work.tar.gz" -C "$work" . 2>/dev/null || tar czf "$work.tar.gz" "$work"
+if [ -n "$stage" ] && cp -- "$work.tar.gz" "$src_root/" 2>/dev/null; then
+  printf 'copy next to the source checkout: %s\n' "$src_root/$(basename -- "$work.tar.gz")"
+fi
 printf '\n<SYD-GATE-SESSION>\nwork=%s\ntar=%s\nfailures=%s\n</SYD-GATE-SESSION>\n' \
   "$work" "$work.tar.gz" "$failures"
 printf 'human tail (NOT scripted):\n'

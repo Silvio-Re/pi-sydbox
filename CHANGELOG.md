@@ -3,16 +3,22 @@
 ## [Unreleased]
 
 - tools/gate-session.sh: one-command runner for the scripted part of the
-  gate machine session (P4 section of docs/ROADMAP.md). From a fresh
-  clone it captures everything mechanical: preflight, maintainer-engine
+  gate machine session (P4 section of docs/ROADMAP.md). Invoke it from any
+  checkout: the script pulls it --ff-only and stages a fresh NATIVE clone
+  under $HOME (a checkout on a noexec mount, e.g. a VirtualBox shared
+  folder, breaks npm ci bin links and case exec — the staging removes
+  that dependency on where the checkout lives; the packed tarball is
+  copied back next to the invoking checkout). It captures everything
+  mechanical: preflight, maintainer-engine
   backup, the make setup drill (elapsed time = the onboarding metric,
   method recorded), npm ci, the headless RPC probe, corpus + gate with
   the installed distro engine (p3-gate-distro) and with the backed-up
   maintainer binary (m6-canonical, the M2 witness), the machine-lock
   diff, the AppArmor/sysctl snapshot, and a packed evidence tarball.
-  `--phase-4b` reruns the post-reboot verification; `--skip-setup`
-  reuses a provisioned engine. The sudo/reboot (design.md phase 4), the
-  flip drill sessions and the soak remain human steps by design. The RPC
+  `--phase-4b` reruns the post-reboot verification (reusing the latest
+  session dir); `--skip-setup` reuses a provisioned engine. The
+  sudo/reboot (design.md phase 4), the flip drill sessions and the soak
+  remain human steps by design. The RPC
   probe README's invocation now uses absolute paths (the harness runs
   pi with cwd inside --work; relative paths fail, verified 2026-11-26).
 - P6 distro engine path (roadmap order P6; the 6.x-band default becomes a
