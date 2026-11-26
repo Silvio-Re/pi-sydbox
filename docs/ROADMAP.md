@@ -139,8 +139,11 @@ merge: 119 tests / 0 fail, shellcheck clean on the ci.yml file set.
    stop. The maintainer runs it weekly or on demand; it opens no issues
    and triggers no runs by itself. pi moves roughly weekly and syd
    roughly monthly (measured 2026-11-25).
-4. Renovate or Dependabot for the two npm devDependencies and the
-   SHA-pinned actions.
+4. Dependency drift rides the same script: the drift check reports
+   available vs pinned for the npm devDependencies (`@types/node`,
+   `typescript`, plus the package item 1 adds). No Renovate, no
+   Dependabot: both are GitHub automation, excluded by the CI policy;
+   dependencies are bumped manually from the drift report.
 
 Gate P2: a drill on a branch that breaks one contract point fails the
 local contract check before merge.
