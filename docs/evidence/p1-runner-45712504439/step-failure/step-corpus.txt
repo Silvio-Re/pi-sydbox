@@ -1,3 +1,0 @@
-bash corpus/run.sh --label "syd-runner" --engine-cmd "OME/.local/opt/syd-3.59.0/syd -P \ROFILE_FILE --" --profile-template corpus/profiles/syd-a.profile
-engine not found: OME/.local/opt/syd-3.59.0/syd (15 selected case(s) unrun)
-make: *** [Makefile:17: corpus] Error 3
