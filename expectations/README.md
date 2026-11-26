@@ -76,9 +76,10 @@ bash tools/golden-tsv.sh --summary results/landstrip-golden/summary.tsv \
 
 `results/` is gitignored, so a capture that only lives there dies with the
 checkout. The durable copy is the TSV plus the evidence directory that
-the run was taken from (`docs/evidence/`; the landstrip rows refer to
-`docs/evidence/m1-20261125/`, the pinned-engine runner runs to
-`docs/evidence/p1-20261125/`).
+the run was taken from (`docs/evidence/`; the landstrip
+rows refer to `docs/evidence/m1-20261125/`; a pinned-engine capture
+lands with its own new directory there, decided at the P3 gate
+machine, roadmap P1.5).
 
 The whole flow is two tracked make targets; a gitignored spare script is no
 longer the only way to reproduce it:

@@ -2,8 +2,9 @@
 
 ## [Unreleased]
 
-- P1 provable claims (roadmap order P1; plain-VM evidence
-  `docs/evidence/p1-20261126-vm/`):
+- P1 provable claims (roadmap order P1; evidence: the committed corpus,
+  gate and case-integrity tooling; the engine-backed corpus + gate run
+  lands at the P3 gate machine, roadmap P1.5):
   - The D corpus is complete: d04-d14 join d01-d03, covering the design.md
     rows D4-D14 (hardlink of a denied source, `/proc/self/oom_score_adj`
     write, git HTTPS with `~/.netrc`, stat existence leak, symlink toward

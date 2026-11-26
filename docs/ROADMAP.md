@@ -20,23 +20,28 @@ coordination point between independent agents and the maintainer.
   it as proof.
 - Gates are pass/fail. A failed gate stops the order: record the failure in
   the Ledger and stop; do not debug past a gate.
-- CI must be green on the branch before merge (`npm run ci` and shellcheck,
-  per `.github/workflows/ci.yml`).
+- Checks must pass locally before merge, with the exact commands
+  `.github/workflows/ci.yml` defines (`npm run ci`, shellcheck on the
+  workflow's file set); the worker records the counts in the PR. GitHub
+  Actions are disabled (2026-11-26, maintainer decision); GitHub runs
+  nothing, and `ci.yml` stays only as the definition of the commands.
 - After finishing or failing: update the Ledger (status, evidence link,
   date), add a CHANGELOG `[Unreleased]` entry when the change is
   user-visible, merge.
 - Environment constraint (verified, see `environment.md` Limits): the
   engine cannot run inside the landstrip sandbox (memfd write denied,
-  rc=124/13). Any step that runs the engine happens in a plain Linux VM, a
-  CI runner, or a plain terminal on the end machine, never inside a
+  rc=124/13). Any step that runs the engine happens in a plain Linux VM
+  or a plain terminal on the end machine, never inside a
   sandboxed pi session.
-- CI policy (2026-11-26, maintainer decision: git stays simple): the only
-  standing repository automation is `.github/workflows/ci.yml` (push and
-  pull request: unit + shellcheck). No additional GitHub workflows,
-  scheduled or dispatched, without an explicit maintainer decision;
-  recurring checks live as maintainer-run scripts under `tools/`.
+- CI policy (2026-11-26, maintainer decision: git stays simple): GitHub
+  Actions are disabled on this repository; nothing runs on GitHub. The
+  check commands live in `.github/workflows/ci.yml` (kept as the
+  definition) and run locally before merge; recurring checks live as
+  maintainer-run scripts under `tools/`. Re-enabling or adding any
+  automation requires an explicit maintainer decision.
 
-ENV column: `vm` = any autonomous agent in a Linux VM or CI runner;
+ENV column: `vm` = any autonomous agent in a Linux VM (no CI; see the CI
+policy);
 `machine` = the end-usage machine only (human runs agent-supplied commands
 in a plain terminal).
 
@@ -48,7 +53,8 @@ in a plain terminal).
    `make gate` is green and meaningful (equal-or-stricter on the D corpus).
 3. pi-web UX verified in the soak: prompts render, auto-deny fires,
    budget holds, grants are auditable via CLI.
-4. Contract tests plus the drift cron are live; the maintenance SOP is
+4. The local pi contract checks and the maintainer-run drift check pass;
+   the maintenance SOP is
    documented (kernel-band engine policy included).
 5. This roadmap updated in place with shipped status and tagged v1.0.0.
 
@@ -123,13 +129,19 @@ green.
    0002 and `expectations/README.md`): it still rejects a compiled
    profile that guards only truncation, but neither the golden row nor
    the gate may be cited as detecting an append bug.
-5. Second-band evidence: build the pinned engine on a plain Linux VM (or
-   any machine that is not the author's) with the repo's own scripts, run
-   the whole corpus and the gate, commit the verdict tables labeled with
-   the kernel band. Band evidence complements, never replaces, the
-   canonical 6.8 witness (M2, folded into M6). No CI workflow is involved
-   (CI policy above); an aborted runner experiment in P1 left no
-   committed evidence, and none is wanted.
+5. Second-band evidence: execution deferred to the P3 gate machine. The
+   canonical 6.8 engine-backed corpus plus `make gate` run happens on the
+   author's machine (M6 4b, M2 folded there); the second band is P3's
+   gate machine, which by definition is not the author's and already
+   builds the engine in its setup step. P1 closes on the strength of jobs
+   1-4: the complete corpus with integrity-recorded cases, the gate whose
+   comparison and integrity rules are verified locally against synthetic
+   scenarios, and no automation traces. The first full engine-backed
+   corpus pass after P1 may surface case results needing reading; that
+   reading happens on the P3 gate machine and is recorded there as band
+   evidence. Worker VMs with a read-only 1 GiB cgroup memory cap cannot
+   build the engine (verified 2026-11-26: rustc is SIGKILLed at the cap
+  in every configuration tried); do not retry there.
 
 Gate P1: `make gate` green against the golden set; every bypass probe
 equal-or-stricter; both case-integrity rules enforced by the gate; no doc
@@ -137,12 +149,13 @@ cites gitignored paths as proof.
 
 ### P2 — contract the hosts (vm; after P0)
 
-1. pi contract tests in CI: devDependency on the real
+1. pi contract checks, local (per the CI policy): devDependency on the real
    `@earendil-works/pi-coding-agent`; assert `createLocalBashOperations`
    is an exported callable (it powers `user_bash`), assert the dialog
    options accept `timeout`, assert the event names `tool_call`,
    `tool_result`, `user_bash` exist in the API surface. A future
-   `timeoutMs`-class break becomes a red build.
+   `timeoutMs`-class break fails the local contract check before any
+   merge.
 2. `docs/support-matrix.md`: kernel band vs engine (below 7.2 means
    3.59.0 source build; 7.2+ opens the release path), pi and pi-web
    versions verified, OS claims limited to what is tested.
@@ -156,7 +169,8 @@ cites gitignored paths as proof.
 4. Renovate or Dependabot for the two npm devDependencies and the
    SHA-pinned actions.
 
-Gate P2: a drill on a branch that breaks one contract point turns CI red
+Gate P2: a drill on a branch that breaks one contract point fails the
+   local contract check before merge.
 before merge.
 
 ### P3 — clone-to-usable (vm; after P1 gate and P2.2)
@@ -185,10 +199,13 @@ before merge.
    user's explicit command (H1 preserved: adoption remains a human act);
    the manual `cp` stays in the refusal text.
 
-Gate P3: a clean CI job that clones the repo fresh and follows only the
-README reaches sandboxed bash with a working deny+prompt cycle (headless
-via the RPC client); the 30-minute human measurement on a real second
-machine trails this gate and lands in the Ledger.
+Gate P3: a machine that is not the author's clones the repo fresh and
+follows only the README to sandboxed bash with a working deny+prompt
+cycle (headless via the RPC client); the same machine runs the full
+corpus plus `make gate`, and the verdict tables, labeled with its kernel
+band, land in `docs/evidence/` (this run completes the P1 engine pass and
+provides the second-band evidence); the 30-minute human measurement on a
+real second machine trails this gate and lands in the Ledger.
 
 ### P4/M4-M7 — soak and decommission (machine; after P0 and P3)
 
@@ -311,7 +328,7 @@ merged into another order's session. One row per order. Do not reorder rows.
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
-| P1 provable claims | vm | M1 | blocked (jobs 1-4 done: citation sweep, corpus d04-d14 + p01, make gate; job 5, the plain-VM engine-evidence pass over the whole corpus and the gate, cannot run here: this VM's cgroup v2 memory.max is 1.04 GiB and read-only (swapon EPERM), and the syd 3.59.0 build is killed at the cap by rustc in every configuration tried; needs a VM with more memory or swap) | PR #2 (p1-provable-claims) |
+| P1 provable claims | vm | M1 | done (jobs 1-4: citation sweep repointed to committed paths, corpus d04-d14 + p01 on top of the d01-d03 probes, `make gate` + case-integrity verified on synthetic runs, d06 netrc case and harness TLS git server fixes, all committed) | corpus/d/ and corpus/p/, `tools/gate.sh` + `tools/golden-tsv.sh` + `tools/case-integrity.sh`, `expectations/`, d06 + run.sh validation in PR #2; the engine-backed corpus + gate run lands at the P3 gate machine (roadmap P1.5) |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
