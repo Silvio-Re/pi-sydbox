@@ -1,0 +1,18 @@
+# Gate P2 drill, break 3 of 3: the tool_call event is removed from the API surface
+#
+# The break was applied to the installed copy of @earendil-works/pi-coding-agent
+# 1.6.0 (node_modules, not committed): in dist/core/extensions/types.d.ts the
+# event name tool_call was renamed to tool_call_gone in both the on() overload
+# and the ToolCallEvent discriminator. The repository's own files are untouched.
+# Command and output of the local check:
+#
+$ npm run ci
+> pi-sydbox@0.1.0 ci
+> npm run typecheck && npm test
+> pi-sydbox@0.1.0 typecheck
+> tsc --noEmit -p tsconfig.json
+test/pi-contract.test.ts(50,7): error TS2322: Type 'true' is not assignable to type 'never'.
+test/pi-contract.test.ts(60,10): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '"tool_call"' is not assignable to parameter of type '"input"'.
+# exit: 2 (typecheck failed; the runtime suite never started)

@@ -53,4 +53,20 @@ else
   say OK "no recorded schema drift"
 fi
 
+# Network drift section (roadmap P2). Read-only: one available-vs-pinned line
+# per source, then stop. It opens no issues and triggers nothing. The
+# comparison baselines come from syd.lock and package.json only (parsed by
+# tools/drift-report.py). A network failure is one WARN line, never a crash.
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+drift="$(python3 "$repo_root/tools/drift-report.py" "$repo_root" 2>/dev/null)" || drift=""
+if [ -z "$drift" ]; then
+  say WARN "network unreachable, drift check skipped"
+else
+  while read -r level message; do
+    say "$level" "$message"
+  done <<EOF
+$drift
+EOF
+fi
+
 exit "$warn"

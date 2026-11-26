@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+- P2 contract the hosts (roadmap order P2; evidence: the Gate P2 drill under
+  `docs/evidence/p2-contract-drill-20261126/` and the drift run
+  `docs/evidence/p2-drift-report-20261126.txt`):
+  - The real `@earendil-works/pi-coding-agent` is an exactly-pinned
+    devDependency (1.6.0, no range: pi releases roughly weekly), and
+    `test/pi-contract.test.ts` asserts the extension's three host-contract
+    points against that shipped package: `createLocalBashOperations` is an
+    exported callable (runtime), the dialog options accept `timeout` and
+    reject `timeoutMs` (type-level, fails `npm run typecheck`), and the
+    `tool_call`, `tool_result` and `user_bash` events exist in the API
+    surface (type-level). A future pi upgrade that breaks any point fails
+    `npm run ci` before merge; the committed drill shows each break failing
+    and the untouched branch green (122 tests / 0 fail).
+  - `docs/support-matrix.md` records what is supported with per-row evidence
+    links (kernel band vs engine, pi 1.6.0, pi-web 0.18.0, the tested OS); the
+    >= 7.2 kernel band is explicitly pending until Gate P3. Host-tool pins
+    (pi 1.6.0, pi-web 0.18.0) are recorded in `syd.lock` (`hosts`).
+  - `tools/weekly-check.sh` gained a network drift section
+    (`tools/drift-report.py`): one available-vs-pinned line per source — syd
+    on crates.io, the GitLab tags and distfiles, `@agegr/pi-web` and the npm
+    devDependencies — baselines from `syd.lock` and `package.json` only. It
+    is read-only (opens no issues, triggers nothing), and an unreachable
+    network is one WARN line, not a crash.
+
 - P1 provable claims (roadmap order P1; evidence: the committed corpus,
   gate and case-integrity tooling; the engine-backed corpus + gate run
   lands at the P3 gate machine, roadmap P1.5):

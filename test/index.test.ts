@@ -451,11 +451,15 @@ test("a once-grant fed to a `!` command lapses with that command (M1)", async ()
     // nothing more to check — the extension never runs a second spawn on
     // the stale grant either way.
     const verdict = (await handlers.get("user_bash")?.({ command: "echo mapped" }, ctx)) as
-      | { operations?: { exec?: (cmd: string, cwd: string) => Promise<unknown> } }
+      | { operations?: { exec?: (cmd: string, cwd: string, options?: { onData?: unknown }) => Promise<unknown> } }
       | undefined;
     const exec = verdict?.operations?.exec;
     if (typeof exec === "function") {
-      await exec("echo mapped", dir);
+      // pi's real backend destructures its options argument (onData, signal,
+      // timeout, env), so the call passes the object its runtime always
+      // supplies; without it the real package throws and only the old
+      // package-absent fallback was ever exercised here.
+      await exec("echo mapped", dir, { onData: () => {} });
       const second = { command: "echo there" };
       await handlers.get("tool_call")?.({ toolName: "bash", input: second }, ctx);
       assert.doesNotMatch(readFileSync(profilePath!, "utf8"), /once\.txt/, "the `!` spawn consumed the once-grant");
