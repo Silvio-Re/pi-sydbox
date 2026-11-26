@@ -118,35 +118,33 @@ gate machine (Gate P3), because VMs under a ~1 GiB RAM cap cannot build
 the engine at all (`docs/environment.md`, Limits). Local checks at
 merge: 119 tests / 0 fail, shellcheck clean on the ci.yml file set.
 
+### P2 — contract the hosts: DONE (2026-11-26)
+
+The real `@earendil-works/pi-coding-agent` 1.6.0 is an exactly-pinned
+devDependency, and `test/pi-contract.test.ts` asserts the three
+host-contract points against the shipped package (import-only; pi is
+never launched from the test): `createLocalBashOperations` is an exported
+callable (runtime), the dialog options accept `timeout` and reject the
+historical `timeoutMs` (type-level), and the `tool_call`, `tool_result`,
+`user_bash` events exist in the API surface (type-level) — a type-level
+break fails `npm run typecheck`, the first half of `npm run ci`.
+`docs/support-matrix.md` records the supported surface row by row with
+evidence links; the >= 7.2 kernel band is explicitly pending Gate P3.
+`tools/weekly-check.sh` gained a read-only network drift section
+(`tools/drift-report.py`): one available-vs-pinned line per source
+(syd on crates.io, the GitLab tags, distfiles; the npm packages and the
+repo devDependencies), baselines from `syd.lock` and `package.json`
+only; an unreachable network is one WARN line, not a crash. Installing
+the real package flipped one existing `user_bash` test onto its intended
+real-package path (pi's backend destructures its options argument),
+fixed by passing the object pi always supplies. Gate P2 passed: the
+drill under `docs/evidence/p2-contract-drill-20261126/` breaks each
+contract point against the pinned package one at a time and captures
+`npm run ci` failing each time, plus the final green run (122 tests /
+0 fail, shellcheck clean on the ci.yml file set). A real drift run is
+committed as `docs/evidence/p2-drift-report-20261126.txt`.
+
 ## Open orders
-
-### P2 — contract the hosts (vm; ready)
-
-1. pi contract checks, local (per the CI policy): devDependency on the
-   real `@earendil-works/pi-coding-agent`; assert
-   `createLocalBashOperations` is an exported callable (it powers
-   `user_bash`), assert the dialog options accept `timeout`, assert the
-   event names `tool_call`, `tool_result`, `user_bash` exist in the API
-   surface. A future `timeoutMs`-class break fails the local contract
-   check before any merge.
-2. `docs/support-matrix.md`: kernel band vs engine (below 7.2 means
-   3.59.0 source build; 7.2+ opens the release path), pi and pi-web
-   versions verified, OS claims limited to what is tested.
-3. Weekly drift check, maintainer-run (per the CI policy): extend
-   `tools/weekly-check.sh` to poll crates.io, distfiles and the GitLab
-   tags for syd; poll npm for `@earendil-works/pi-coding-agent` and
-   `@agegr/pi-web`; print a one-line available-vs-pinned report and
-   stop. The maintainer runs it weekly or on demand; it opens no issues
-   and triggers no runs by itself. pi moves roughly weekly and syd
-   roughly monthly (measured 2026-11-25).
-4. Dependency drift rides the same script: the drift check reports
-   available vs pinned for the npm devDependencies (`@types/node`,
-   `typescript`, plus the package item 1 adds). No Renovate, no
-   Dependabot: both are GitHub automation, excluded by the CI policy;
-   dependencies are bumped manually from the drift report.
-
-Gate P2: a drill on a branch that breaks one contract point fails the
-local contract check before merge.
 
 ### P3 — clone-to-usable (vm; after P1 and P2.2)
 
@@ -222,13 +220,13 @@ syd and pi communities.
 
 ## Sequencing
 
-- Done: P0, M1, P1.
-- P2 next; it needs nothing further. P3 waits on P1's deliverables and
-  P2.2 (the support matrix the README will point to).
+- Done: P0, M1, P1, P2.
+- P3 next; it waits on P1's deliverables and P2.2 (the support matrix the
+  README will point to), both delivered.
 - M4-M7 machine sessions after P3 (setup + README done). M2 and M3 tasks
   ride M6 and M5 respectively. M7 last: it destroys the golden source
   M1 preserved.
-- Critical path: P2 -> P3 -> M4-M7 soak -> P5.
+- Critical path: P3 -> M4-M7 soak -> P5.
 
 ## Ledger
 
@@ -242,7 +240,7 @@ reorder rows.
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
 | P1 provable claims | vm | M1 | done (PR #2, squash-merged d899865) | `corpus/d/` + `corpus/p/`, `tools/gate.sh` + `tools/golden-tsv.sh` + `tools/case-integrity.sh`, `expectations/`; engine-backed corpus + gate run lands at Gate P3 |
-| P2 host contracts and drift automation | vm | P0 | todo | |
+| P2 host contracts and drift automation | vm | P0 | done (docs/evidence/p2-contract-drill-20261126/, docs/evidence/p2-drift-report-20261126.txt) | `test/pi-contract.test.ts`, `docs/support-matrix.md`, `tools/weekly-check.sh` + `tools/drift-report.py`, `syd.lock` (`hosts`) |
 | P3 clone-to-usable | vm | P1, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
 | M3 pi-web auto-deny confirm | machine | P0.1 | folded (into M5) | tasks listed in its order text |

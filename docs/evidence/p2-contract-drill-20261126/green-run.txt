@@ -1,0 +1,17 @@
+# Gate P2 drill, final: the untouched branch is green
+#
+# After each of the three breaks above, the installed package copy was
+# restored from the pristine 1.6.0 tarball contents and the local check run.
+# This is the final state of the branch (no break applied):
+#
+$ npm run ci
+# (typecheck: clean; node --test summary:)
+# tests 122
+# suites 0
+# pass 122
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2771.917217
+# exit: 0

@@ -1,0 +1,21 @@
+# Network drift report, one real run of tools/weekly-check.sh (P2.3), 2026-11-26
+#
+# The lines after 'no recorded schema drift' are the new section; the earlier
+# WARN lines are the pre-existing landstrip checks (this VM has no landstrip
+# install, the maintainer's machine does). Exit semantics unchanged: WARN -> 1.
+#
+WARN  landstrip pin absent from @HOME@/.pi/agent/settings.json (expected until phase 5)
+WARN  appimage patch script missing (an npm install may have wiped it)
+WARN  pi-landstrip not found under @HOME@/.pi/agent/npm/node_modules
+WARN  @landstrip/landstrip-api not found under @HOME@/.pi/agent/npm/node_modules
+WARN  @landstrip/landstrip-linux-x64 not found under @HOME@/.pi/agent/npm/node_modules
+WARN  bundled pi package not found at the recorded path
+OK    no recorded schema drift
+WARN  syd crates.io has 3.60.0, pinned source build is 3.59.0 (syd.lock)
+OK    syd GitLab newest tag v3.60.0 matches the pinned release 3.60.0 (syd.lock)
+OK    syd distfiles newest tarball syd-3.60.0 matches the pinned release 3.60.0 (syd.lock)
+WARN  @agegr/pi-web has 0.19.0, pinned is 0.18.0 (syd.lock)
+WARN  @earendil-works/pi-coding-agent has 1.6.1, the pinned spec 1.6.0 does not cover it (package.json)
+WARN  @types/node has 26.6.11, the pinned spec ^22.0.0 does not cover it (package.json)
+WARN  typescript has 7.0.2, the pinned spec ~5.9.0 does not cover it (package.json)
+# exit: 1

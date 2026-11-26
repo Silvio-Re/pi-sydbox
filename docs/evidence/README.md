@@ -38,6 +38,10 @@ behind.
 | directory | order | holds |
 |---|---|---|
 | `m1-20261125/` | M1 golden capture + evidence handover | landstrip profile and its resolved shape, engine pin, the phase-0 machine artifact, the two cited verdict runs, the probe scripts the code comments cite, the capture itself |
+| `p2-contract-drill-20261126/` | P2 contract the hosts | the Gate P2 drill: each pi contract point broken one at a time against the pinned 1.6.0 package, each failing transcript, and the final green run |
+
+A real run of the extended drift check of the same order is committed as
+`p2-drift-report-20261126.txt` (one line per source, WARN on drift).
 
 The `docs/evidence/` copy is the durable one. If a log is cited from a comment,
 the citation points here and this table says what it proves.

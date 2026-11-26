@@ -58,5 +58,18 @@
     "The tarball unpacks to syd-3.60.0-x86_64-pc-linux-gnu/bin/syd, a static-pie ELF; `syd --version` prints 'syd 3.60.0 (Biding My Time)'.",
     "It cannot run inside the landstrip sandbox: `syd --check` reports 'Kernel may be tainted (error: EOPNOTSUPP: Operation not supported on transport endpoint)' and `syd -P profile -- /bin/true` hangs until killed (measured 2026-06-04). Engine runs are a plain-terminal step.",
     "Source build 3.59.0 (2026-11-23) is the engine to use on this 6.8 kernel. It needs libseccomp >= 2.6.0 behind it: the apt 2.5.5 headers compile but the link fails on seccomp_export_bpf_mem, so libseccomp 2.6.0 is built from source as well (build-libseccomp.sh builds gperf into the workdir when absent). The binary links, installs and reports its version and feature set, but enforcement was not exercised from inside the landstrip session that produced it: a nested engine child writes /memfd:syd, the host sandbox denies that write, and cases end in rc=124 or rc=13. Run 03-smoke.sh in a plain terminal."
-  ]
+  ],
+  "hosts": {
+    "piCodingAgent": {
+      "package": "@earendil-works/pi-coding-agent",
+      "pinned": "1.6.0",
+      "pinnedBy": "package.json devDependencies (exact pin, no range: pi releases roughly weekly)",
+      "verified": "dialog timeout honored headless: docs/evidence/p0-auto-deny-20261125/; API surface asserted by test/pi-contract.test.ts"
+    },
+    "piWeb": {
+      "package": "@agegr/pi-web",
+      "pinned": "0.18.0",
+      "verified": "the maintainer's daily-driver install is 0.18.0; the browser-layer auto-deny confirmation rides the M5 soak (roadmap M3, folded)"
+    }
+  }
 }

@@ -1,0 +1,24 @@
+# Gate P2 drill, break 1 of 3: the export is renamed (createLocalBashOperations -> createLocalBashOps)
+#
+# The break was applied to the installed copy of @earendil-works/pi-coding-agent
+# 1.6.0 (node_modules, not committed): every .js/.d.ts occurrence of the export
+# was renamed, exactly what an upstream rename would look like. The repository's
+# own files are untouched. Commands and output of the local check (npm run ci):
+#
+$ npm run ci
+> pi-sydbox@0.1.0 ci
+> npm run typecheck && npm test
+> pi-sydbox@0.1.0 typecheck
+> tsc --noEmit -p tsconfig.json
+test/pi-contract.test.ts(4,3): error TS2724: '"@earendil-works/pi-coding-agent"' has no exported member named 'createLocalBashOperations'. Did you mean 'createLocalBashOps'?
+# exit: 1 (typecheck failed; the runtime suite never started)
+#
+# The runtime path of the same check, run directly:
+$ node --experimental-strip-types --test test/pi-contract.test.ts
+#   createLocalBashOperations,
+# SyntaxError: The requested module '@earendil-works/pi-coding-agent' does not provide an export named 'createLocalBashOperations'
+not ok 1 - test/pi-contract.test.ts
+# tests 1
+# pass 0
+# fail 1
+# exit: 1 (0 pass, 1 fail)

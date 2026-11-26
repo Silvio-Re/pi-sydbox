@@ -1,0 +1,16 @@
+# Gate P2 drill, break 2 of 3: the dialog option flips back to timeoutMs
+#
+# The break was applied to the installed copy of @earendil-works/pi-coding-agent
+# 1.6.0 (node_modules, not committed): ExtensionUIDialogOptions.timeout was
+# renamed to timeoutMs in dist/core/extensions/types.d.ts — the exact historical
+# break (P0: timeoutMs was silently ignored by every mode). The repository's own
+# files are untouched. Command and output of the local check:
+#
+$ npm run ci
+> pi-sydbox@0.1.0 ci
+> npm run typecheck && npm test
+> pi-sydbox@0.1.0 typecheck
+> tsc --noEmit -p tsconfig.json
+test/pi-contract.test.ts(42,7): error TS2322: Type 'true' is not assignable to type 'never'.
+test/pi-contract.test.ts(46,7): error TS2322: Type 'true' is not assignable to type 'never'.
+# exit: 2 (typecheck failed; the runtime suite never started)

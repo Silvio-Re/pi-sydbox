@@ -19,6 +19,7 @@
     "ci": "npm run typecheck && npm test"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.6.0",
     "@types/node": "^22.0.0",
     "typescript": "~5.9.0"
   }
