@@ -302,15 +302,25 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         # Minimal smart-http v0 upload-pack advertisement: one ref is all
-        # `git ls-remote` needs.
-        body = (b"001b# service=git-upload-pack\n0000"
-                b"0039" + b"0" * 40 + b" refs/heads/main\n" + b"0000")
+        # `git ls-remote` needs. A pkt-line length prefix counts the four
+        # bytes of the prefix itself, so both lengths are computed, not
+        # spelled out (a constant that forgot its own four bytes made git
+        # reject the advertisement with "invalid server response").
+        def pkt(data):
+            return ("%04x" % (len(data) + 4)).encode() + data
+        body = (pkt(b"# service=git-upload-pack\n") + b"0000"
+                + pkt(b"0" * 40 + b" refs/heads/main\n") + b"0000")
         # Never log credential content: AUTH/NO-AUTH only.
         print(("AUTH " if auth else "NO-AUTH ") + self.path, flush=True)
         self.send_response(200)
         self.send_header("Content-Type",
                          "application/x-git-upload-pack-advertisement")
         self.send_header("Cache-Control", "no-cache")
+        # Content-Length lets curl finish the response without waiting for
+        # EOF; without it, the HTTPS close (no TLS close_notify from
+        # BaseHTTPRequestHandler) reads as a truncated response and git
+        # dies with a GnuTLS recv error before ls-remote can parse the ref.
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
