@@ -19,12 +19,17 @@ corpus:
 verify:
 > bash tools/verify-artifact.sh
 
-# setup: the one-command machine setup (P3). Detects the kernel band, runs the
-# release path (verify + install) or the source path (libseccomp + engine
-# build), provisions the machine lock (~/.local/opt/syd.lock), runs the smoke
-# and prints the pi install next steps. Human-run, plain terminal, no sandbox.
+# setup: the one-command machine setup (P3/P6). Detects the kernel band, runs
+# the release path (>= 7.2: verify + install), the distro path (6.x x86_64
+# default: libseccomp + pinned third-party binary) or the source fallback
+# (--build-from-source / non-x86_64: libseccomp + engine build), provisions
+# the machine lock (~/.local/opt/syd.lock), runs the smoke and prints the pi
+# install next steps. Human-run, plain terminal, no sandbox.
+#
+#   make setup
+#   make setup SETUP_ARGS=--build-from-source
 setup:
-> bash tools/setup/setup.sh
+> bash tools/setup/setup.sh $(SETUP_ARGS)
 
 # gate: compare an already-produced run summary against expectations/*.tsv.
 # No engine is started; semantics in tools/gate.sh and expectations/README.md.

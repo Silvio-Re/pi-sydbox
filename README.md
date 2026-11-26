@@ -30,17 +30,22 @@ Four commands, fresh clone to sandboxed bash (`make setup` is human-run, in
 a plain terminal — never inside another sandbox):
 
 ```bash
-sudo apt install build-essential pkg-config curl xz-utils python3-cryptography
+sudo apt install build-essential pkg-config curl xz-utils zstd python3-cryptography
 git clone https://github.com/Silvio-Re/pi-sydbox && cd pi-sydbox
 make setup          # engine per kernel band + machine lock + smoke + next steps
 pi install ./pi-sydbox
 ```
 
-On a kernel older than 7.2 `make setup` takes the source path and needs a
-Rust toolchain (>= 1.88, via rustup) and ~4 GB RAM; it says so itself before
-it starts. `python3-cryptography` is what `tools/minisign-verify.py` imports
-(release path); the kernel-band rule itself is
-[docs/environment.md](docs/environment.md) ("Engine, two paths"), and what is
+On a kernel older than 7.2 the default engine is the pinned third-party 3.59.0
+distro binary (verified by byte hash, launched through the locally built
+libseccomp 2.6.0 — no Rust toolchain needed; it is x86_64-only). `make setup
+SETUP_ARGS=--build-from-source` (or a non-x86_64 host) takes the source-build
+fallback
+instead: Rust >= 1.88 via rustup and ~4 GB RAM; `make setup` says so itself
+before it starts. `zstd` unpacks the distro package (`.pkg.tar.zst`);
+`python3-cryptography` is what `tools/minisign-verify.py` imports (release
+path). The band rule itself is
+[docs/environment.md](docs/environment.md) ("Engine acquisition"), and what is
 actually verified on which band is [docs/support-matrix.md](docs/support-matrix.md).
 
 **pi-web** (the browser UI) uses the same local configuration and session

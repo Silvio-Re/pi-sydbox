@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
-# setup.sh — the one-command machine setup the roadmap's P3 order asks for;
-# wrapped by `make setup`. Human-run, in a plain terminal, outside any
-# sandbox (the engine writes its exec image to a memfd; a nested sandbox
-# kills it with rc=124/13 — docs/environment.md, Limits).
+# setup.sh — the one-command machine setup; wrapped by `make setup`.
+# Human-run, in a plain terminal, outside any sandbox (agent surfaces
+# cannot host the engine at all — docs/environment.md, Limits).
 #
 #   make setup
-#   bash tools/setup/setup.sh [--lock-out ~/.local/opt/syd.lock]
+#   bash tools/setup/setup.sh [--lock-out ~/.local/opt/syd.lock] [--build-from-source]
+#
+# Engine acquisition (docs/environment.md, Engine acquisition — P6):
+#   Linux >= 7.2 : the 3.60.0 signed upstream release (verify + install).
+#   Linux < 7.2, x86_64, default: the pinned third-party 3.59.0 distro binary
+#                  (tools/setup/install-distro.sh) plus the locally built
+#                  libseccomp 2.6.0 behind a launcher wrapper. No rustup.
+#   Linux < 7.2, --build-from-source (or non-x86_64): the 3.59.0 source build
+#                  (libseccomp + engine build, rust >= 1.88, ~4 GB RAM).
 #
 # What it does, in order:
-#   1. detect the kernel band (src/setup.ts, the docs/environment.md rule:
-#      Linux >= 7.2 takes the 3.60.0 release path, anything older the 3.59.0
-#      source build — 3.60.0 needs landlock ABI 10 and refuses to start below)
-#   2. release path: tools/verify-artifact.sh (sha512 + minisign) then
-#      tools/setup/install.sh;  source path: tools/setup/build-libseccomp.sh
-#      then tools/setup/build-engine.sh with the recorded environment
+#   1. detect the kernel band (src/setup.ts)
+#   2. acquire the engine per the policy above
 #   3. provision the machine lock (~/.local/opt/syd.lock) from the repo
 #      syd.lock with local paths plus the sha256 of the installed binary
+#      (and, on the distro path, the real binary's sha256 beside the wrapper's)
 #   4. run tools/setup/03-smoke.sh against the installed engine
 #   5. print the pi install next steps
 #
@@ -31,9 +35,11 @@ set -uo pipefail
 
 repo_root=""
 lock_out="$HOME/.local/opt/syd.lock"
+build_from_source=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --lock-out) lock_out="${2:?--lock-out needs a value}"; shift 2 ;;
+    --build-from-source) build_from_source=1; shift ;;
     -h|--help)
       sed -n '3,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
@@ -59,7 +65,7 @@ fi
 # --- 1. kernel band ----------------------------------------------------------
 release="$(uname -r)"
 band="$(node --experimental-strip-types src/setup.ts band --release "$release")" \
-  || fail "cannot classify kernel '$release' — decide the band manually (docs/environment.md, Engine, two paths)"
+  || fail "cannot classify kernel '$release' — decide the band manually (docs/environment.md, Engine acquisition)"
 printf '== kernel %s -> %s path ==\n' "$release" "$band"
 
 # --- 2. engine ---------------------------------------------------------------
@@ -70,30 +76,70 @@ if [ "$band" = "release" ]; then
   bash tools/setup/install.sh --src agent_dir/cache --dest "$HOME/.local/opt" \
     || fail "install failed — see the <SYD-INSTALL> block above"
   engine="$HOME/.local/opt/syd-$version/syd"
+  distro_binary=""
 else
   version="$(python3 -c "import json;print(json.load(open('syd.lock'))['sourceBuild']['version'])")"
   libseccomp_version="$(python3 -c "import json;print(json.load(open('syd.lock'))['sourceBuild']['libseccomp']['version'])")"
-  printf '== source path: libseccomp %s then engine %s ==\n' "$libseccomp_version" "$version"
-  printf '    (the engine build needs ~4 GB RAM; a ~1 GiB-capped VM cannot build it at all — docs/environment.md, Limits)\n'
-  command -v cargo >/dev/null 2>&1 || command -v "$HOME/.cargo/bin/cargo" >/dev/null 2>&1 \
-    || fail "cargo (rustup, >= 1.88) is required for the source build"
-  bash tools/setup/build-libseccomp.sh "$libseccomp_version" || fail "libseccomp build failed"
-  env PKG_CONFIG_PATH="$HOME/.local/opt/libseccomp-$libseccomp_version/lib/pkgconfig" \
-      LIBSECCOMP_LIB_PATH="$HOME/.local/opt/libseccomp-$libseccomp_version/lib" \
-      LIBSECCOMP_LINK_TYPE=static \
-      bash tools/setup/build-engine.sh "$version" || fail "engine build failed (see the <SYD-BUILD> block above)"
-  engine="$HOME/.local/opt/syd-$version/syd"
+  arch="$(uname -m)"
+  if [ "$build_from_source" -eq 0 ] && [ "$arch" = "x86_64" ]; then
+    printf '== distro path (6.x-band default, no rustup needed): libseccomp %s then the pinned 3.59.0 distro binary ==\n' "$libseccomp_version"
+    bash tools/setup/build-libseccomp.sh "$libseccomp_version" || fail "libseccomp build failed"
+    bash tools/setup/install-distro.sh || fail "distro engine install failed (see the <SYD-DISTRO-INSTALL> block above)"
+    # Launcher decision (P6): the distro binary links libseccomp.so.2
+    # dynamically (ldd: libseccomp.so.2, libc.so.6, libgcc_s.so.1) and needs
+    # >= 2.6.0, which Ubuntu-class hosts do not ship (apt carries 2.5.5, and
+    # 2.5.5 lacks seccomp_export_bpf_mem). A deterministic exec wrapper
+    # prepends the locally built 2.6.0 and execs the real binary, uniform
+    # across the band; a bare run would only work on hosts that already
+    # carry >= 2.6.0, so the wrapper is the decided launcher. The machine
+    # lock hashes the real binary either way (distroBuild section).
+    engine="$HOME/.local/opt/syd-$version/syd"
+    distro_binary="$HOME/.local/opt/syd-$version/syd.bin"
+  else
+    if [ "$build_from_source" -eq 0 ]; then
+      printf '== arch %s: the pinned distro binary is x86_64-only — falling back to the source build ==\n' "$arch"
+    else
+      printf '== source fallback requested (--build-from-source) ==\n'
+    fi
+    printf '== source path: libseccomp %s then engine %s ==\n' "$libseccomp_version" "$version"
+    printf '    (the engine build needs ~4 GB RAM; a ~1 GiB-capped VM cannot build it at all — docs/environment.md, Limits)\n'
+    command -v cargo >/dev/null 2>&1 || command -v "$HOME/.cargo/bin/cargo" >/dev/null 2>&1 \
+      || fail "cargo (rustup, >= 1.88) is required for the source build"
+    # The distro pair may sit at the same prefix (same version, same syd
+    # path): build-engine.sh's idempotence check greps the INSTALLED binary's
+    # --version banner, and the distro wrapper would satisfy it, silently
+    # keeping the third-party binary under a source-build request. A source
+    # build replaces the distro install deterministically.
+    if [ -f "$HOME/.local/opt/syd-$version/syd.bin" ]; then
+      printf '    (replacing the distro install at the same prefix with the source build)\n'
+      rm -f -- "$HOME/.local/opt/syd-$version/syd" "$HOME/.local/opt/syd-$version/syd.bin" \
+        || fail "cannot remove the distro install at $HOME/.local/opt/syd-$version"
+    fi
+    bash tools/setup/build-libseccomp.sh "$libseccomp_version" || fail "libseccomp build failed"
+    env PKG_CONFIG_PATH="$HOME/.local/opt/libseccomp-$libseccomp_version/lib/pkgconfig" \
+        LIBSECCOMP_LIB_PATH="$HOME/.local/opt/libseccomp-$libseccomp_version/lib" \
+        LIBSECCOMP_LINK_TYPE=static \
+        bash tools/setup/build-engine.sh "$version" || fail "engine build failed (see the <SYD-BUILD> block above)"
+    engine="$HOME/.local/opt/syd-$version/syd"
+    distro_binary=""
+  fi
 fi
 [ -x "$engine" ] || fail "expected engine binary $engine is missing or not executable"
 printf '== engine: %s ==\n' "$engine"
 
 # --- 3. machine lock ---------------------------------------------------------
-node --experimental-strip-types src/setup.ts write-lock \
-  --repo-lock syd.lock --engine "$engine" --out "$lock_out" \
-  || fail "machine lock generation failed"
+if [ -n "$distro_binary" ]; then
+  node --experimental-strip-types src/setup.ts write-lock \
+    --repo-lock syd.lock --engine "$engine" --distro-binary "$distro_binary" --out "$lock_out" \
+    || fail "machine lock generation failed"
+else
+  node --experimental-strip-types src/setup.ts write-lock \
+    --repo-lock syd.lock --engine "$engine" --out "$lock_out" \
+    || fail "machine lock generation failed"
+fi
 
 # --- 4. smoke ----------------------------------------------------------------
-printf '== smoke (plain terminal; inside a sandbox the engine dies rc=124/13) ==\n'
+printf '== smoke (plain terminal; agent surfaces cannot host the engine — docs/environment.md, Limits) ==\n'
 bash tools/setup/03-smoke.sh "$engine" || fail "smoke script failed to run"
 
 # --- 5. next steps -----------------------------------------------------------

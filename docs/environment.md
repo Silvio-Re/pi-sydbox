@@ -34,23 +34,45 @@ sudo apt install build-essential pkg-config curl xz-utils
   roadmap, checks-and-automation policy), so these are run locally before
   any merge.
 
-## Engine, two paths
+## Engine acquisition
 
-The signed release tarball and a source build are not interchangeable, because
-the newest release refuses to start on older kernels.
+Acquisition is three paths, chosen by kernel band and architecture. The signed
+release tarball, the pinned third-party distro binary and a source build are not
+interchangeable, because the newest release refuses to start on older kernels.
 
-| Host kernel | Engine | Where it comes from | Provenance |
+| Host | Engine | Where it comes from | Provenance |
 | --- | --- | --- | --- |
 | ≥ 7.2 | 3.60.0 release tarball | `https://distfiles.exherbo.org/sydbox/` | minisign signature, recorded in `syd.lock` |
-| < 7.2 | 3.59.0 built from tag | `tools/setup/build-engine.sh` | tag + commit + toolchain, recorded in `syd.lock` |
+| < 7.2, x86_64 (default) | 3.59.0 distro binary | `tools/setup/install-distro.sh` (Arch package, pinned in `syd.lock` `distroBuild`) | pinned bytes (package + extracted binary sha256), third-party build recorded as such |
+| < 7.2, `--build-from-source` or non-x86_64 | 3.59.0 built from tag | `tools/setup/build-engine.sh` | tag + commit + toolchain, recorded in `syd.lock` |
 
-Why: engine 3.60.0 introduced `quiet/lock` and `log/lock` rules that require
-landlock ABI 10, new in Linux 7.2, and the engine "fails at startup on older
-kernels regardless" of the `default`/`lock` settings (upstream `ChangeLog.md`,
-3.60.0 entry). On a kernel 6.x guest every `syd -P <profile> -- cmd` therefore
-exits `EPERM` with an empty log fd, including commands the profile allows, while
-`syd --check` still exits 0 because it only inspects the host. distfiles keeps no
-older tarballs, so the older engine can only come from source.
+Why the band rule: engine 3.60.0 introduced `quiet/lock` and `log/lock` rules
+that require landlock ABI 10, new in Linux 7.2, and the engine "fails at
+startup on older kernels regardless" of the `default`/`lock` settings
+(upstream `ChangeLog.md`, 3.60.0 entry). On a kernel 6.x guest every
+`syd -P <profile> -- cmd` with 3.60.0 therefore exits `EPERM` with an empty
+log fd, including commands the profile allows, while `syd --check` still exits
+0 because it only inspects the host.
+
+Why the distro default (P6, 2026-11-26): upstream distfiles keeps no prebuilt
+older than current (3.59.x URL probes all 404), so below 7.2 the choice used to
+be "build ~69 MB of Rust with a >= 1.88 toolchain and ~4 GB RAM, or nothing". A
+third-party binary of exactly 3.59.0 exists — the Arch Linux package
+`syd-3.59.0-1-x86_64` (packager recorded in `syd.lock`; features differ from
+the maintainer build: `+oci`, no `+systemd` — recorded, not hidden). Trust is
+pinned bytes, the same policy the repository already uses for the upstream
+artifact: `install-distro.sh` verifies the package sha256 and the extracted
+`usr/bin/syd` sha256 and fails closed on either mismatch; the Arch packager's
+PGP `.sig` is optional, documented, and not part of the enforced chain. The
+distro binary links `libseccomp.so.2` dynamically (ldd: `libseccomp.so.2`,
+`libc.so.6`, `libgcc_s.so.1`) and needs >= 2.6.0, which Ubuntu-class hosts do
+not ship (apt carries 2.5.5, which lacks `seccomp_export_bpf_mem`), so the
+distro path still builds libseccomp 2.6.0 locally and launches the engine
+through a deterministic exec wrapper that prepends it to `LD_LIBRARY_PATH`.
+The machine lock hashes the real binary either way: `engine` pins the wrapper
+by path and wrapper-hash, `distroBuild` records the real installed binary's
+sha256. The source build stays available behind `--build-from-source` (and is
+the automatic fallback on non-x86_64 hosts); it is not deprecated.
 
 ### Release path (kernel ≥ 7.2)
 
@@ -71,7 +93,19 @@ check (key id `b1e47bc29cc65132`, algorithm `Ed`); the trust anchor is
 `tools/syd-release.pub`, and `tools/verify-artifact.sh` runs the whole
 chain.
 
-### Source path (kernel < 7.2)
+### Distro path (kernel < 7.2, x86_64 — the default)
+
+```bash
+bash tools/setup/build-libseccomp.sh 2.6.0   # the distro binary links libseccomp.so.2 dynamically
+bash tools/setup/install-distro.sh           # verify + install the pinned Arch binary + launcher wrapper
+```
+
+`make setup` runs this by default on the 6.x band. Fail closed on any sha256
+mismatch, idempotent re-runs, and the wrapper/lock hash split are described
+under *Engine acquisition* above; `tools/setup/install-distro.sh --help`
+summarizes the same.
+
+### Source path (kernel < 7.2 — the fallback: `--build-from-source`, or non-x86_64)
 
 ```bash
 bash tools/setup/build-libseccomp.sh 2.6.0   # ~15 s
@@ -278,3 +312,16 @@ Other:
   harness supervises every process (`NoNewPrivs: 1`, no capabilities) and the
   engine's seccomp-unotify child setup does not survive that layer. Evidence:
   `docs/evidence/p3-gate-20261126/`.
+- **No agent surface can execute the engine** (maintainer-verified
+  2026-11-26, recorded here as the P6 working limit): syd requires seccomp
+  user-notify, and supervised shells intercept syscalls by construction, so
+  a supervised host cannot host the engine's child setup at all. Two
+  measurements define the limit: the supervisor sandbox returns
+  `EOPNOTSUPP` (95) on a trivial seccomp `SET_MODE_FILTER`, and the P3
+  worker VM gave `ENOSYS` `rc=38` on every sandboxed exec (the item above;
+  `docs/evidence/p3-gate-20261126/`). Consequence: work executed from agent
+  surfaces is code-level only — hash verification, installation and lock
+  provisioning are verifiable there, engine runs are not, and no agent-run
+  output may be cited as engine-execution evidence. The real engine drill
+  runs on the maintainer's plain-terminal 6.8 machine (roadmap P3/M6 fold,
+  maintainer decision 2026-11-26).
