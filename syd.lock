@@ -59,6 +59,29 @@
     "It cannot run inside the landstrip sandbox: `syd --check` reports 'Kernel may be tainted (error: EOPNOTSUPP: Operation not supported on transport endpoint)' and `syd -P profile -- /bin/true` hangs until killed (measured 2026-06-04). Engine runs are a plain-terminal step.",
     "Source build 3.59.0 (2026-11-23) is the engine to use on this 6.8 kernel. It needs libseccomp >= 2.6.0 behind it: the apt 2.5.5 headers compile but the link fails on seccomp_export_bpf_mem, so libseccomp 2.6.0 is built from source as well (build-libseccomp.sh builds gperf into the workdir when absent). The binary links, installs and reports its version and feature set, but enforcement was not exercised from inside the landstrip session that produced it: a nested engine child writes /memfd:syd, the host sandbox denies that write, and cases end in rc=124 or rc=13. Run 03-smoke.sh in a plain terminal."
   ],
+  "distroBuild": {
+    "version": "3.59.0",
+    "url": "https://archive.archlinux.org/packages/s/syd/syd-3.59.0-1-x86_64.pkg.tar.zst",
+    "package": {
+      "sha256": "6d33c68f067eba6c1699ecf3845ff6a0ddf4bbe3e44317eabe9b73edfab60482",
+      "bytes": 9597395
+    },
+    "binary": {
+      "sha256": "700585cd9eeda379457fad3c5c19128f0db2bc72f59da553fef8e203cba980c6",
+      "bytes": 9193208,
+      "banner": "syd 3.59.0 (Take It Back)",
+      "features": "-debug, +force, -kcov, +log, +oci, -trusted"
+    },
+    "packager": "Robin Candau <antiz@archlinux.org> (Arch Linux, .PKGINFO, builddate 2026-09-01)",
+    "fetchedAt": "2026-11-26",
+    "notes": [
+      "Third-party build (Arch Linux package maintainer), NOT the maintainer build recorded in sourceBuild (sha256 db994415c0cc85710193ded9eae4b16a335ce2398abc50eab537b2d2970c780d). It is the 6.x-band DEFAULT engine (roadmap P6): upstream distfiles keeps no prebuilt older than current (3.59.x URL probes all 404, verified 2026-11-26) and the signed 3.60.0 artifact refuses startup below landlock ABI 10.",
+      "Trust = pinned bytes, the same policy the repository already uses for the upstream artifact: the enforced check is the sha256 of the package and of the extracted usr/bin/syd (tools/setup/install-distro.sh fails closed on any mismatch). The .sig beside the package is the Arch packager's PGP; verifying it additionally requires the Arch keyring and is OPTIONAL, documented, and not part of the enforced chain.",
+      "Feature set differs from the maintainer build: +oci and no +systemd (sourceBuild built force, log, systemd; the distro package builds force, log, oci). The difference is recorded, not hidden; oci is inert unless OCI integration is configured, systemd is unused by the extension's spawn path.",
+      "x86_64 only: the package is x86_64, so the distro path refuses other architectures (tools/setup/setup.sh falls back to the source build with a note).",
+      "The binary links libseccomp.so.2 dynamically (ldd: libseccomp.so.2, libc.so.6, libgcc_s.so.1), and syd 3.59.0 needs libseccomp >= 2.6.0 (seccomp_export_bpf_mem), which Ubuntu-class 6.x-band hosts do not ship (apt carries 2.5.5). The distro path therefore builds libseccomp 2.6.0 locally (build-libseccomp.sh, unchanged) and launches the engine through an exec wrapper that sets LD_LIBRARY_PATH to it; the machine lock hashes the real binary either way (docs/environment.md, Engine acquisition)."
+    ]
+  },
   "hosts": {
     "piCodingAgent": {
       "package": "@earendil-works/pi-coding-agent",

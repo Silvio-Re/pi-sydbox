@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+- P6 distro engine path (roadmap order P6; the 6.x-band default becomes a
+  pinned third-party binary, the source build becomes the fallback).
+  Engine execution is NOT claimed anywhere in this change: agent surfaces
+  cannot host the engine (docs/environment.md, Limits, two measurements
+  dated 2026-11-26); the real drill runs on the maintainer's 6.8 machine.
+  - syd.lock gains a `distroBuild` section: the pinned Arch
+    `syd-3.59.0-1-x86_64` package (package sha256 + extracted usr/bin/syd
+    sha256, packager, fetchedAt) with notes recording exactly what it is —
+    a third-party build, NOT the maintainer build (`db994415…`), trusted by
+    pinned bytes (the Arch PGP .sig optional and documented, not enforced),
+    x86_64 only, and the feature difference recorded, not hidden
+    (`+oci`, no `+systemd`).
+  - tools/setup/install-distro.sh: cache-first download, package sha256 AND
+    extracted-binary sha256 verified, fail closed on either mismatch
+    (nothing written into the prefix), only usr/bin/syd installed, a
+    deterministic launcher wrapper beside it, idempotent re-runs; the
+    --version banner is best-effort because agent surfaces cannot execute
+    the engine.
+  - tools/setup/setup.sh: on the 6.x band the default is libseccomp 2.6.0 +
+    the distro install (no rustup needed); the launcher decision is the
+    exec wrapper — the distro binary links libseccomp.so.2 dynamically
+    (ldd: libseccomp.so.2, libc.so.6, libgcc_s.so.1) and needs >= 2.6.0,
+    which Ubuntu-class hosts do not ship (apt 2.5.5 lacks
+    seccomp_export_bpf_mem), so the wrapper prepends the locally built one
+    uniformly instead of probing each host for a bare run. The source build
+    moves behind --build-from-source (make setup SETUP_ARGS=--build-
+    from-source); non-x86_64 hosts fall back to source with a note; the
+    >= 7.2 release path is unchanged. The machine lock pins the wrapper in
+    `engine` and the REAL binary in `distroBuild`.
+  - src/setup.ts + test/setup.test.ts: buildMachineLock/machineLockDiff
+    extended for the distroBuild section (with a guard so the distro path
+    cannot overwrite the sourceBuild record — the wrapper path shares the
+    `syd-<version>/syd` suffix); write-lock gained --distro-binary.
+  - docs: environment.md's "Engine, two paths" became "Engine acquisition"
+    (>= 7.2 upstream release / < 7.2 distro default / source fallback)
+    and gained the Limits row "no agent surface can execute the engine";
+    support-matrix.md carries the engine provenance rows; README's 6.x
+    story says the default needs no rustup (zstd joined the apt line); the
+    roadmap records P6 as an open order, the P3 gate fold into M6
+    (maintainer decision 2026-11-26, not-the-author clause waived) and the
+    P6 ledger row.
+
 - P3 clone-to-usable (roadmap order P3; Stage A delivered, Gate P3 blocked on
   the gate machine's sandboxed shell — exact condition and evidence below):
   - `make setup` (tools/setup/setup.sh wrapping the existing setup scripts):

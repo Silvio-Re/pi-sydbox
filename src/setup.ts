@@ -8,9 +8,11 @@
  *   node --experimental-strip-types src/setup.ts write-lock \
  *     --repo-lock syd.lock --engine ~/.local/opt/syd-3.59.0/syd [--out DIR]
  *
- * The band rule is docs/environment.md's "Engine, two paths": Linux >= 7.2
- * (landlock ABI 10) runs the 3.60.0 signed release; anything older must use
- * the 3.59.0 source build, because 3.60.0 refuses to start below 7.2.
+ * The band rule is docs/environment.md's "Engine acquisition": Linux >= 7.2
+ * (landlock ABI 10) runs the 3.60.0 signed release; anything older takes the
+ * pinned third-party 3.59.0 distro binary by default (P6) with the source
+ * build behind --build-from-source, because 3.60.0 refuses to start below
+ * 7.2 and upstream distfiles keeps no prebuilt older than current.
  *
  * The machine lock is a copy of the repository syd.lock with the LOCAL
  * engine path and the sha256 of the binary that was ACTUALLY installed; the
@@ -54,6 +56,7 @@ interface LockShape {
   version?: unknown;
   engine?: { path?: unknown; binary?: { sha256?: unknown } };
   sourceBuild?: { version?: unknown; installedPath?: unknown; binary?: { sha256?: unknown } };
+  distroBuild?: { version?: unknown; installedPath?: unknown; binary?: { sha256?: unknown }; notes?: unknown };
   hosts?: unknown;
   notes?: unknown;
 }
@@ -64,10 +67,12 @@ function asLock(value: unknown): LockShape {
 }
 
 export interface MachineLockInput {
-  /** The engine binary that was actually installed on this machine. */
+  /** The engine path that actually runs on this machine. */
   path: string;
-  /** sha256 of that binary, hex lowercase. */
+  /** sha256 of the file at that path, hex lowercase (the wrapper's, on the distro path). */
   sha256: string;
+  /** P6 distro path: the REAL binary the launcher wrapper execs. */
+  distro?: { realPath: string; realSha256: string };
 }
 
 /**
@@ -91,13 +96,37 @@ export function buildMachineLock(repoLock: unknown, installed: MachineLockInput,
 
   // The sourceBuild block is updated only when the installed engine IS that
   // source build (its version names the directory): when the release artifact
-  // was installed instead, sourceBuild describes a tag this machine did not
-  // build and stays untouched.
+  // or the distro binary was installed instead, sourceBuild describes a tag
+  // this machine did not build and stays untouched. The distro guard matters:
+  // the distro wrapper path carries the same `syd-<version>/syd` suffix, so
+  // without it the wrapper's hash would silently overwrite the source-build
+  // record.
   const sourceBuild = copy.sourceBuild as Record<string, unknown> | undefined;
-  if (sourceBuild !== undefined && sourceBuild.installedPath !== undefined && installed.path.endsWith(`syd-${String(sourceBuild.version)}/syd`)) {
+  if (
+    installed.distro === undefined &&
+    sourceBuild !== undefined &&
+    sourceBuild.installedPath !== undefined &&
+    installed.path.endsWith(`syd-${String(sourceBuild.version)}/syd`)
+  ) {
     sourceBuild.installedPath = installed.path;
     const sourceBinary = (sourceBuild.binary ??= {}) as Record<string, unknown>;
     sourceBinary.sha256 = installed.sha256;
+  }
+
+  // P6 distro path: the launcher wrapper is what engine.path names and what
+  // the extension's gate hashes at that path; the REAL binary the wrapper
+  // execs is recorded in the distroBuild section, so the machine lock hashes
+  // the real installed binary either way. A machine note says which is which.
+  if (installed.distro !== undefined) {
+    if (!/^[0-9a-f]{64}$/.test(installed.distro.realSha256)) throw new Error(`not a sha256 hex digest: ${installed.distro.realSha256}`);
+    const distroBuild = (copy.distroBuild ??= {}) as Record<string, unknown>;
+    distroBuild.installedPath = installed.distro.realPath;
+    const distroBinary = (distroBuild.binary ??= {}) as Record<string, unknown>;
+    distroBinary.sha256 = installed.distro.realSha256;
+    const distroNotes = (distroBuild.notes ??= []) as unknown[];
+    if (Array.isArray(distroNotes)) {
+      distroNotes.push(`Installed on this machine ${generatedAt}: ${installed.path} is the launcher wrapper (hash in engine.binary.sha256); the real binary it execs is ${installed.distro.realPath} (sha256 ${installed.distro.realSha256}).`);
+    }
   }
 
   const notes = (copy.notes ??= []) as unknown[];
@@ -121,6 +150,8 @@ export function machineLockDiff(repoLock: unknown, machineLock: unknown): string
     [repo.engine?.binary?.sha256, machine.engine?.binary?.sha256, "engine.binary.sha256"],
     [repo.sourceBuild?.installedPath, machine.sourceBuild?.installedPath, "sourceBuild.installedPath"],
     [repo.sourceBuild?.binary?.sha256, machine.sourceBuild?.binary?.sha256, "sourceBuild.binary.sha256"],
+    [repo.distroBuild?.installedPath, machine.distroBuild?.installedPath, "distroBuild.installedPath"],
+    [repo.distroBuild?.binary?.sha256, machine.distroBuild?.binary?.sha256, "distroBuild.binary.sha256"],
   ];
   for (const [before, after, name] of pairs) {
     if (before !== after) out.push(`${name}: ${String(before ?? "(unset)")} -> ${String(after ?? "(unset)")}`);
@@ -154,7 +185,7 @@ export function setupCli(args: readonly string[], env: NodeJS.ProcessEnv = proce
     const release = flag("--release") ?? "";
     const info = kernelBandFromRelease(release);
     if (info === null) {
-      console.error(`cannot parse kernel release '${release}' — decide the band manually (docs/environment.md, Engine, two paths)`);
+      console.error(`cannot parse kernel release '${release}' — decide the band manually (docs/environment.md, Engine acquisition)`);
       return 2;
     }
     console.log(info.band);
@@ -163,9 +194,18 @@ export function setupCli(args: readonly string[], env: NodeJS.ProcessEnv = proce
   if (command === "write-lock") {
     const repoLockPath = flag("--repo-lock") ?? "syd.lock";
     const engine = flag("--engine");
+    // P6 distro path: --distro-binary names the REAL engine the launcher
+    // wrapper execs; the machine lock records its sha256 in the distroBuild
+    // section while engine.binary.sha256 keeps the wrapper's hash (the file
+    // the extension's gate actually hashes at engine.path).
+    const distroBinary = flag("--distro-binary");
     const out = flag("--out") ?? `${env.HOME ?? "/home"}/.local/opt/syd.lock`;
     if (engine === undefined || !existsSync(engine)) {
       console.error(`write-lock: --engine <path> must name the installed engine binary`);
+      return 2;
+    }
+    if (distroBinary !== undefined && !existsSync(distroBinary)) {
+      console.error(`write-lock: --distro-binary ${distroBinary} does not exist`);
       return 2;
     }
     let repoLock: unknown;
@@ -176,13 +216,14 @@ export function setupCli(args: readonly string[], env: NodeJS.ProcessEnv = proce
       return 2;
     }
     const sha256 = sha256File(engine);
-    const machine = buildMachineLock(repoLock, { path: engine, sha256 }, new Date().toISOString());
+    const distro = distroBinary === undefined ? undefined : { realPath: distroBinary, realSha256: sha256File(distroBinary) };
+    const machine = buildMachineLock(repoLock, { path: engine, sha256, distro }, new Date().toISOString());
     writeLockAtomic(out, machine);
     for (const line of machineLockDiff(repoLock, machine)) console.log(`lock: ${line}`);
-    console.log(`machine lock written: ${out} (engine ${engine}, sha256 ${sha256.slice(0, 16)}…)`);
+    console.log(`machine lock written: ${out} (engine ${engine}, sha256 ${sha256.slice(0, 16)}…${distro === undefined ? "" : `, real binary ${distro.realPath}`})`);
     return 0;
   }
-  console.error("usage: src/setup.ts band --release <uname -r> | write-lock --repo-lock syd.lock --engine <path> [--out <file>]");
+  console.error(" usage: src/setup.ts band --release <uname -r> | write-lock --repo-lock syd.lock --engine <path> [--distro-binary <path>] [--out <file>]");
   return 2;
 }
 
