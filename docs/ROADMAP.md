@@ -311,7 +311,7 @@ merged into another order's session. One row per order. Do not reorder rows.
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
-| P1 provable claims | vm | M1 | blocked (jobs 1-4 done: citation sweep, corpus d04-d14 + p01, make gate; job 5, the plain-VM engine-evidence pass over the whole corpus and the gate, is still owed) | PR #2 (p1-provable-claims) |
+| P1 provable claims | vm | M1 | blocked (jobs 1-4 done: citation sweep, corpus d04-d14 + p01, make gate; job 5, the plain-VM engine-evidence pass over the whole corpus and the gate, cannot run here: this VM's cgroup v2 memory.max is 1.04 GiB and read-only (swapon EPERM), and the syd 3.59.0 build is killed at the cap by rustc in every configuration tried; needs a VM with more memory or swap) | PR #2 (p1-provable-claims) |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
