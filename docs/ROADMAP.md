@@ -232,7 +232,10 @@ out of the runtime chain.
 
 The scripted part of the machine session is `tools/gate-session.sh`
 (maintainer decision 2026-11-26: do not offload mechanical work to the
-human). From a fresh clone: `bash tools/gate-session.sh` runs preflight,
+human). From ANY checkout — including one on a noexec mount such as a
+VirtualBox shared folder; the script pulls it `--ff-only` and stages a
+fresh native clone under $HOME itself: `bash tools/gate-session.sh` runs
+preflight,
 the maintainer-engine backup, `make setup` (elapsed time recorded as the
 onboarding metric, method "scripted drill"), `npm ci`, the headless RPC
 probe, corpus + gate with the installed distro engine (label
