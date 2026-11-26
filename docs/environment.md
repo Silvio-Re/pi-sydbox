@@ -17,7 +17,8 @@ sudo apt install build-essential pkg-config curl xz-utils
 - `libseccomp-dev` (the apt package, 2.5.5 on this guest) is not enough to build
   engine 3.59.0: the link fails with `undefined symbol: seccomp_export_bpf_mem`,
   which upstream added after 2.5.5. The engine build therefore runs against a
-  local libseccomp 2.6.0 (`tools/setup/build-libseccomp.sh`; the agent_dir copies are the working twins). The apt package
+  local libseccomp 2.6.0 built by the tracked `tools/setup/build-libseccomp.sh`
+  (the agent_dir copies from the spike are its untracked historical twins). The apt package
   stays installed for `pkg-config` and for anything else wanting the system
   library.
 - Rust toolchain through rustup (`~/.cargo/bin/cargo`), floor 1.88 as declared
@@ -50,19 +51,22 @@ older tarballs, so the older engine can only come from source.
 ### Release path (kernel ≥ 7.2)
 
 ```bash
-# 1. put the tarball and its .sig in agent_dir/dist/ (or any empty dir) and run:
-bash tools/verify-artifact.sh            # checks what is there now; prints the
-                                         # curl commands to fetch anything missing
-# or, against an already-populated dir:
-bash agent_dir/spike/02-verify.sh agent_dir/dist   # sha512 + minisign
+# 1. verification chain (the tracked tools are the durable ones; their
+#    download cache is agent_dir/cache/, a functional path, gitignored):
+bash tools/verify-artifact.sh            # checks the cache first, downloads the
+                                         # pinned tarball if needed, prints the
+                                         # curl commands to fetch anything
+                                         # manually when network is unavailable
+# 2. install:
 bash tools/setup/install.sh                    # -> ~/.local/opt/syd-<version>/syd
 ```
 
 The signature is minisign, not OpenPGP: `gpg --verify` cannot succeed on it
-whatever key is imported. `tools/minisign-verify.py` performs the
+whatever key is imported. The tracked `tools/minisign-verify.py` performs the
 check (key id `b1e47bc29cc65132`, algorithm `Ed`); the trust anchor is
-`tools/syd-release.pub`. The agent_dir `02-verify.sh`/`minisign_verify.py`
-files are the working twins of the vendored scripts.
+`tools/syd-release.pub`. (The `02-verify.sh` / `minisign_verify.py` files under
+agent_dir were the spike's untracked working twins; the tracked tools above are
+the durable ones, run by `tools/verify-artifact.sh`.)
 
 ### Source path (kernel < 7.2)
 

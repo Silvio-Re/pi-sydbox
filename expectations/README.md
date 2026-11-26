@@ -76,13 +76,33 @@ bash tools/golden-tsv.sh --summary results/landstrip-golden/summary.tsv \
 
 `results/` is gitignored, so a capture that only lives there dies with the
 checkout. The durable copy is the TSV plus the evidence directory that
-`expectations/landstrip.tsv`'s run was taken from (`docs/evidence/`).
+the run was taken from (`docs/evidence/`; the landstrip
+rows refer to `docs/evidence/m1-20261125/`; a pinned-engine capture
+lands with its own new directory there, decided at the P3 gate
+machine, roadmap P1.5).
 
-Both commands are also a single step in `agent_dir/spike/verdict.sh`
-(`landstrip-golden`, probe `agent_dir/spike/25-landstrip-golden.sh`): it runs the
-corpus, writes this file through `tools/golden-tsv.sh` and copies the sanitized
-capture into `docs/evidence/`, and it refuses to record a capture in which every
-D case allowed.
+The whole flow is two tracked make targets; a gitignored spare script is no
+longer the only way to reproduce it:
+
+```sh
+# 1. capture: run the corpus, then emit a candidate TSV through
+#    tools/golden-tsv.sh (refuses unclassified cases and denies without a
+#    backing engine record; the candidate lands in gitignored results/):
+make capture LABEL=syd-golden PROFILE=corpus/profiles/syd-a.profile \
+     ENGINE='$HOME/.local/opt/syd-3.59.0/syd -P \$PROFILE_FILE --' \
+     NAME=syd VERSION=3.59.0
+# 2. review results/<label>/candidate.tsv, then move the rows you want to
+#    keep into expectations/ yourself, and commit the sanitized run under
+#    docs/evidence/ (tools/sanitize-evidence.sh).
+# 3. gate the commit against the new golden set:
+make gate RESULTS=results/<label>/summary.tsv
+```
+
+The first landstrip capture (and this file's rows) used the same harness
+with `ENGINE='<landstrip binary> -p $PROFILE_FILE --'`, `NAME=landstrip`,
+`VERSION=0.20.29`; that capture was produced on the phase-0 machine
+before the make target existed and is sanitized under
+`docs/evidence/m1-20261125/`.
 
 ## The landstrip profile these rows were captured against
 

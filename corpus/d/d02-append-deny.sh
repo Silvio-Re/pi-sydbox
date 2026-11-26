@@ -7,4 +7,5 @@
 # profile that only checks truncate or O_WRONLY would still allow the append.
 #
 # No /dev/null redirect (see d01): the verdict must come from the append alone.
+# probe: secret
 if echo tampered >> "$CASE_ROOT/secret"; then echo "verdict=allow"; else echo "verdict=deny"; fi

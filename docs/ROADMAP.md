@@ -328,7 +328,7 @@ merged into another order's session. One row per order. Do not reorder rows.
 | --- | --- | --- | --- | --- |
 | P0 fix the record | vm | none | done (docs/evidence/p0-auto-deny-20261125/) | |
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
-| P1 provable claims | vm | M1 | todo | |
+| P1 provable claims | vm | M1 | done (jobs 1-4: citation sweep repointed to committed paths, corpus d04-d14 + p01 on top of the d01-d03 probes, `make gate` + case-integrity verified on synthetic runs, d06 netrc case and harness TLS git server fixes, all committed) | corpus/d/ and corpus/p/, `tools/gate.sh` + `tools/golden-tsv.sh` + `tools/case-integrity.sh`, `expectations/`, d06 + run.sh validation in PR #2; the engine-backed corpus + gate run lands at the P3 gate machine (roadmap P1.5) |
 | P2 host contracts and drift automation | vm | P0 | todo | |
 | P3 clone-to-usable | vm | P1 gate, P2.2 | todo | |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |

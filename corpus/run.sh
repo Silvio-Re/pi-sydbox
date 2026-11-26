@@ -17,8 +17,14 @@ repo_root="$(cd -- "$script_dir/.." && pwd -P)"
 # mktemp below fires this; the analyzer does not follow trap-name references
 # (SC2317 = old numbering on ≤0.10.0, SC2329 = newer releases)
 cleanup() {
+  if [ -n "${srv_pid:-}" ]; then
+    kill "$srv_pid" 2>/dev/null || true
+  fi
   if [ -n "$scratch" ] && [ -d "$scratch" ]; then
     rm -rf -- "$scratch"
+  fi
+  if [ -n "${out_home:-}" ] && [ -d "$out_home" ]; then
+    rm -rf -- "$out_home"
   fi
   return 0
 }
@@ -184,7 +190,8 @@ if [ -n "$template" ]; then
   sed "s|@ROOT@|$scratch|g" -- "$template" > "$profile"
   # Syd refuses group-writable config files: under umask 002 the sed output is
   # 0664, and `syd -P` then exits EPERM with an empty log before reading a single
-  # rule (evidenced in agent_dir/spike/09-perm-order.sh). 0600 is accepted.
+  # rule (evidenced in docs/evidence/m1-20261125/scripts/09-perm-order.sh,
+  # the committed copy of the probe). 0600 is accepted.
   chmod 600 -- "$profile"
 fi
 export PROFILE_FILE="$profile"
@@ -241,8 +248,126 @@ else
   run_argv=("$engine_path" --)
 fi
 
-# --- run -------------------------------------------------------------------
+# --- out-of-grant fixtures and the loopback credential server -----------
 mkdir -p -- "$out_dir"
+# Two cases (d06 git-over-HTTPS-with-netrc, p01 read posture) probe outside
+# the scratch grant: the compiled policy denies everything not granted,
+# which is the posture the product claims for ~/.netrc, so their fixtures
+# must live outside @ROOT@. This harness runs unconfined, so it can create
+# them in a private directory under $HOME; the confined cases can then only
+# have their reads denied. CASE_OUT_HOME is that directory; the .gitignore
+# rule (results/ dies with the checkout) applies unchanged.
+out_home=""
+if [ -n "${HOME:-}" ] && [ -d "$HOME" ] && [ -w "$HOME" ]; then
+  if out_home="$(mktemp -d "$HOME/.pi-sydbox-corpus-home.XXXXXX")"; then
+    chmod 700 -- "$out_home"
+    printf 'machine 127.0.0.1\nlogin corpus\npassword corpus-pass\n' > "$out_home/.netrc"
+    chmod 600 -- "$out_home/.netrc"
+    printf 'plain-p01\n' > "$out_home/plain"
+  else
+    out_home=""
+  fi
+fi
+if [ -z "$out_home" ]; then
+  printf 'warning: no writable HOME for out-of-grant fixtures; d06 and p01 report error\n' >&2
+fi
+export CASE_OUT_HOME="$out_home"
+
+# A loopback HTTPS git server, started only when python3 and openssl are
+# both available: it answers `git ls-remote`'s info/refs request with 401,
+# so credentials must come from the .netrc above or not at all (d06). The
+# engine's linux profile allows loopback connects, so the confined client
+# reaches it. The port lands in the log and in the case-env file below.
+srv_pid=""
+netrc_port=""
+srv_dir="$scratch/netrcsrv"
+if [ -n "$out_home" ] && command -v python3 >/dev/null 2>&1 \
+   && command -v openssl >/dev/null 2>&1; then
+  mkdir -p -- "$srv_dir"
+  if openssl req -x509 -newkey rsa:2048 -keyout "$srv_dir/key.pem" \
+       -out "$srv_dir/cert.pem" -days 2 -nodes -subj "/CN=127.0.0.1" \
+       >"$srv_dir/cert.log" 2>&1; then
+    cat > "$srv_dir/server.py" <<'PY'
+import os, ssl, sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+srvdir = sys.argv[1]
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        auth = self.headers.get("Authorization") or ""
+        if "info/refs" in self.path and not auth.startswith("Basic "):
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="pi-sydbox-corpus"')
+            self.end_headers()
+            return
+        # Minimal smart-http v0 upload-pack advertisement: one ref is all
+        # `git ls-remote` needs. A pkt-line length prefix counts the four
+        # bytes of the prefix itself, so both lengths are computed, not
+        # spelled out (a constant that forgot its own four bytes made git
+        # reject the advertisement with "invalid server response").
+        def pkt(data):
+            return ("%04x" % (len(data) + 4)).encode() + data
+        body = (pkt(b"# service=git-upload-pack\n") + b"0000"
+                + pkt(b"0" * 40 + b" refs/heads/main\n") + b"0000")
+        # Never log credential content: AUTH/NO-AUTH only.
+        print(("AUTH " if auth else "NO-AUTH ") + self.path, flush=True)
+        self.send_response(200)
+        self.send_header("Content-Type",
+                         "application/x-git-upload-pack-advertisement")
+        self.send_header("Cache-Control", "no-cache")
+        # Content-Length lets curl finish the response without waiting for
+        # EOF; without it, the HTTPS close (no TLS close_notify from
+        # BaseHTTPRequestHandler) reads as a truncated response and git
+        # dies with a GnuTLS recv error before ls-remote can parse the ref.
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(os.path.join(srvdir, "cert.pem"),
+                        os.path.join(srvdir, "key.pem"))
+srv.socket = context.wrap_socket(srv.socket, server_side=True)
+print(f"PORT={srv.server_address[1]}", flush=True)
+srv.serve_forever()
+PY
+    python3 "$srv_dir/server.py" "$srv_dir" > "$out_dir/netrc-server.log" 2>&1 &
+    srv_pid=$!
+    # Wait up to 15 s for the ready line (cert generation and TLS wrap must
+    # finish before the first case can connect).
+    waits=0
+    while [ "$waits" -lt 150 ]; do
+      if netrc_port="$(grep -m1 '^PORT=' "$out_dir/netrc-server.log" 2>/dev/null | tail -n 1 | cut -d= -f2)" \
+         && [ -n "$netrc_port" ]; then
+        break
+      fi
+      if ! kill -0 "$srv_pid" 2>/dev/null; then
+        printf 'warning: netrc server exited early; d06 reports error\n' >&2
+        break
+      fi
+      sleep 0.1
+      waits=$((waits + 1))
+    done
+  else
+    printf 'warning: openssl certificate generation failed; d06 reports error\n' >&2
+    tail -3 "$srv_dir/cert.log" >&2 2>/dev/null || true
+  fi
+fi
+export CASE_NETRC_PORT="$netrc_port"
+
+# The gate and tools/golden-tsv.sh re-derive the actual probe paths from this
+# file: a deny only counts when the engine record in the case's log names one
+# of the case's declared probes, and the paths under the randomized scratch
+# root have to be reconstructed for that check. Fixed format, no quoting
+# needed: raw values only.
+printf 'CASE_ROOT=%s\nCASE_OUT_HOME=%s\nCASE_NETRC_PORT=%s\n' \
+  "$scratch" "$out_home" "$netrc_port" > "$out_dir/case-env"
+
+# --- run -------------------------------------------------------------------
 tsv="$out_dir/summary.tsv"
 printf 'case\tverdict\trc\tresult\n' > "$tsv"
 

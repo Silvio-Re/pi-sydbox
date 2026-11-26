@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+- P1 provable claims (roadmap order P1; evidence: the committed corpus,
+  gate and case-integrity tooling; the engine-backed corpus + gate run
+  lands at the P3 gate machine, roadmap P1.5):
+  - The D corpus is complete: d04-d14 join d01-d03, covering the design.md
+    rows D4-D14 (hardlink of a denied source, `/proc/self/oom_score_adj`
+    write, git HTTPS with `~/.netrc`, stat existence leak, symlink toward
+    a denied target, `/proc/self/root` traversal, `mmap` MAP_SHARED,
+    hardlink inside the writable tree with a write-through, rename across
+    the boundary, TOCTOU swap, and a 30-operation engine storm). Each D
+    case declares its probe paths with `# probe:` lines, and a deny
+    without an engine record naming one of them fails the gate — the M1
+    `/dev/null` lesson is now enforced by tooling instead of discipline.
+  - `make gate` replaces the Makefile stub: it compares a run's
+    `summary.tsv` against the committed golden rows with the
+    equal-or-stricter rule (golden rows exist only where a capture
+    produced them; D cases without a row still have to classify —
+    timeout, engine-error and error never pass). corpus/p cases are never
+    compared. The D2 row is compared like any other golden row and the
+    tool's output says nothing about append behavior: the row is a
+    regression baseline, and the d02 case itself is what rejects a
+    truncation-only profile.
+  - `make capture` runs the corpus and emits a candidate golden TSV
+    through `tools/golden-tsv.sh` (`--run` adds the same probe-record
+    check to captures), so a regeneration is two tracked make targets and
+    nothing cites a gitignored spike for it any more.
+  - corpus/run.sh builds out-of-grant fixtures (a private `$HOME`
+    directory holding the d06 netrc and the p01 probe file) and starts a
+    loopback HTTPS git server for d06; it records the run's actual
+    `CASE_ROOT`/`CASE_OUT_HOME`/`CASE_NETRC_PORT` in
+    `results/<label>/case-env`, from which the gate re-derives probe
+    paths.
+  - p01 read-posture probe (corpus/p): a policy that grants only the
+    scratch root denies a read outside it — the deny-by-default claim is
+    now pinned to a measured verdict.
+  - Citations cleaned: every instruction or proof citation in docs now
+    points at a committed file (README before-you-trust pointer,
+    environment.md release-path commands, the corpus profile-permission
+    comment, the expectations regeneration section); agent_dir paths
+    remain only as functional paths and marked history.
 - P0 fix the record (roadmap order P0; evidence
   `docs/evidence/p0-auto-deny-20261125/`):
   - The approval dialog now sends pi's actual dialog option, `timeout`
