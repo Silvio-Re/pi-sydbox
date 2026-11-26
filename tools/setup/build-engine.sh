@@ -100,18 +100,25 @@ if [ ! -x "$binary" ] || [ "$force" -eq 1 ]; then
 fi
 [ -x "$binary" ] || die "build produced no executable at $binary"
 
-banner="$("$binary" --version 2>&1 | head -1)"
+# The whole output is captured first, the first line taken afterwards: an
+# early `| head -1` closes the pipe on syd's stdout while it is still
+# writing (its --version prints several lines), syd exits 141 on the EPIPE,
+# and `set -o pipefail` turns that into a build failure (P3 gate machine,
+# 2026-11-26). Consumers that read the whole stream (awk, sed without -n
+# limits, grep without -q) never trigger it.
+version_all="$("$binary" --version 2>&1)" || die "built binary fails --version"
+banner="${version_all%%$'\n'*}"
 case "$banner" in
   "syd $version"*) : ;;
   *) die "built binary reports '$banner', expected version $version" ;;
 esac
-features="$(sed -n 's/^default = \[\(.*\)\]/\1/p' "$src/Cargo.toml" | head -1)"
+features="$(sed -n 's/^default = \[\(.*\)\]/\1/p' "$src/Cargo.toml" | sed -n '1p')"
 checksum="$(sha256sum "$binary" | awk '{print $1}')"
 sha512="$(sha512sum "$binary" | awk '{print $1}')"
 
 # ---- install ----
 status=installed
-if [ -x "$prefix/syd" ] && [ "$force" -eq 0 ] && "$prefix/syd" --version 2>/dev/null | head -1 | grep -q "syd $version"; then
+if [ -x "$prefix/syd" ] && [ "$force" -eq 0 ] && "$prefix/syd" --version 2>/dev/null | grep "^syd $version" >/dev/null; then
   status="already present"
 else
   mkdir -p "$prefix" 2>/dev/null || true

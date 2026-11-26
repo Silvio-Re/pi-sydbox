@@ -5,7 +5,7 @@ PROFILE ?=
 NAME ?=
 VERSION ?=
 RESULTS ?=
-.PHONY: test check corpus verify gate capture
+.PHONY: test check corpus verify gate capture setup
 
 test:
 > node --experimental-strip-types --test test/*.test.ts
@@ -18,6 +18,13 @@ corpus:
 
 verify:
 > bash tools/verify-artifact.sh
+
+# setup: the one-command machine setup (P3). Detects the kernel band, runs the
+# release path (verify + install) or the source path (libseccomp + engine
+# build), provisions the machine lock (~/.local/opt/syd.lock), runs the smoke
+# and prints the pi install next steps. Human-run, plain terminal, no sandbox.
+setup:
+> bash tools/setup/setup.sh
 
 # gate: compare an already-produced run summary against expectations/*.tsv.
 # No engine is started; semantics in tools/gate.sh and expectations/README.md.

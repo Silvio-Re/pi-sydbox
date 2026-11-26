@@ -1,0 +1,5 @@
+# tools/setup/build-engine.sh 3.59.0 --workdir @SCRATCH@ (complete SYD-BUILD record)
+
+# tail of the cargo build (tools/setup/build-engine.sh runs cargo --release --locked):
+   Compiling syd v3.59.0 (@SCRATCH@/syd-3.59.0)
+    Finished `release` profile [optimized + debuginfo] target(s) in 51.86s

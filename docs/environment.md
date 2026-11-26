@@ -271,3 +271,10 @@ Other:
   denies that write, and cases then time out (`rc=124`) or fail with `EACCES`
   (`rc=13`). `--version` and `--check` work because they start no child. Engine
   runs are a plain-terminal step, as `syd.lock` already notes for 3.60.0.
+- The same class of failure appears in an agent-harness VM with no landstrip at
+  all (P3 gate attempt, 2026-11-26): the engine builds from source and passes
+  `--check`, but every sandboxed exec — and the `-p off` unconfined control —
+  exits `ENOSYS` (`rc=38`, "exec error: Function not implemented"), because the
+  harness supervises every process (`NoNewPrivs: 1`, no capabilities) and the
+  engine's seccomp-unotify child setup does not survive that layer. Evidence:
+  `docs/evidence/p3-gate-20261126/`.

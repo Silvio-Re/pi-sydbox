@@ -144,41 +144,46 @@ contract point against the pinned package one at a time and captures
 0 fail, shellcheck clean on the ci.yml file set). A real drift run is
 committed as `docs/evidence/p2-drift-report-20261126.txt`.
 
+### P3 — clone-to-usable: STAGE A DONE, GATE BLOCKED (2026-11-26)
+
+Stage A is delivered in full. `make setup` (tools/setup/setup.sh) wraps the
+existing setup scripts and adds what the order asked: kernel-band detection
+(src/setup.ts, unit-tested), the release or source path per band, machine-lock
+provisioning (~/.local/opt/syd.lock from the repo syd.lock plus the installed
+binary's sha256, so the extension's gate refuses any other engine), the
+03-smoke, the pi install next steps, and the python3-cryptography
+prerequisite. The README was rewritten clone-to-usable: four commands, a
+first-run walkthrough (prompt, the four tiers' actual persistence, the
+4-prompt budget, the measured 120 s auto-deny), a refusal troubleshooting
+table and an evidence-linked security caveat; docs/support-matrix.md is the
+sibling doc. The grants/policy CLI (src/cli.ts: list, revoke,
+effective-policy; project and global) shares the extension's store, policy
+and compiler — one implementation, no second source of truth; `removeGrant`
+lives in src/store.ts. pi 1.6.0's tool_result transform contract EXISTS, so
+denial-bearing bash results carry a one-line explainer (append-only,
+structuredContent preserved) plus the before_agent_start prompt guidelines;
+`/sydbox adopt` (registerCommand, which exists in 1.6.0) performs the H1
+policy copy on the explicit command, with /sydbox status beside it and the
+manual cp still in the refusal text. No pi-API limitation had to be
+recorded — the three surfaces are asserted in test/pi-contract.test.ts.
+
+The gate run surfaced and fixed one portability defect: build-engine.sh
+died rc=141 (SIGPIPE under pipefail) cutting `syd --version | head -1`.
+
+Gate P3: BLOCKED, not failed in content — a second machine (kernel 6.18,
+source band, Debian 13, 6.2 GB RAM, not the author's) followed the README:
+band detection, libseccomp 2.6.0 and the engine at the pinned tag and commit
+built, machine lock provisioned, `syd --check` green. But every sandboxed
+exec on that VM exits ENOSYS rc=38 — including the `-p off` control — because
+its agent-harness shell is itself a supervised sandbox layer, the exact
+precondition the gate excludes (docs/environment.md, Limits; the same class
+as the landstrip rc=124/13 blocker). The corpus run, `make gate` and the
+headless RPC deny+prompt+grant round-trip were NOT executed and are NOT
+claimed. Evidence: docs/evidence/p3-gate-20261126/. The supervisor arranges
+the gate on an unsandboxed machine; the second-band (>= 7.2) evidence and
+the P1 engine pass still land with that run.
+
 ## Open orders
-
-### P3 — clone-to-usable (vm; after P1 and P2.2)
-
-1. `make setup` (wrapping the tools/setup scripts): detect the kernel
-   band, run the release path (verify + install) or the source path
-   (libseccomp + engine build), provision the machine lock (generate
-   `~/.local/opt/syd.lock` from the repo lock with local paths plus the
-   sha256 of the actually installed binary; the extension's gate then
-   refuses any other engine), run the smoke, print the pi install next
-   steps. Adds the currently undocumented `python3-cryptography`
-   prerequisite.
-2. README rewrite: at most 4 commands to a working sandbox, pi-web
-   local-path plugin install, first-run walkthrough (first prompt, tier
-   meanings, budget), refusal-message troubleshooting table, security
-   caveat linking committed evidence.
-3. Grants/policy CLI: `list`, `revoke`, effective-policy view, per
-   project and global. No GUI in v1.0.
-4. Agent-facing feedback: confirm the pi extension API's tool-result
-   transform contract, then annotate a blocked or denial-bearing bash
-   result with a one-line explainer; add a system-prompt section telling
-   the model that denials need human grants and blind retries are futile.
-   If the transform contract does not exist in the verified pi version,
-   implement the system-prompt half only and record the limitation.
-5. `/sydbox adopt` extension command: performs the policy copy on the
-   user's explicit command (H1 preserved: adoption remains a human act);
-   the manual `cp` stays in the refusal text.
-
-Gate P3: a machine that is not the author's clones the repo fresh and
-follows only the README to sandboxed bash with a working deny+prompt
-cycle (headless via the RPC client); the same machine runs the full
-corpus plus `make gate`, and the verdict tables, labeled with its kernel
-band, land in `docs/evidence/` (this run completes the P1 engine pass and
-provides the second-band evidence); the 30-minute human measurement on a
-real second machine trails this gate and lands in the Ledger.
 
 ### P4/ M4-M7 — soak and decommission (machine; after P0 and P3)
 
@@ -220,13 +225,12 @@ syd and pi communities.
 
 ## Sequencing
 
-- Done: P0, M1, P1, P2.
-- P3 next; it waits on P1's deliverables and P2.2 (the support matrix the
-  README will point to), both delivered.
-- M4-M7 machine sessions after P3 (setup + README done). M2 and M3 tasks
-  ride M6 and M5 respectively. M7 last: it destroys the golden source
-  M1 preserved.
-- Critical path: P3 -> M4-M7 soak -> P5.
+- Done: P0, M1, P1, P2. P3: Stage A done, Gate P3 blocked on the gate
+  machine's sandboxed shell (supervisor arranges an unsandboxed run).
+- M4-M7 machine sessions after the P3 gate lands (setup + README are done
+  and merged). M2 and M3 tasks ride M6 and M5 respectively. M7 last: it
+  destroys the golden source M1 preserved.
+- Critical path: Gate P3 rerun on an unsandboxed machine -> M4-M7 soak -> P5.
 
 ## Ledger
 
@@ -241,7 +245,7 @@ reorder rows.
 | M1 golden + evidence handover | machine | none | done (35144ce) | `expectations/landstrip.tsv`, `docs/evidence/m1-20261125/README.md` |
 | P1 provable claims | vm | M1 | done (PR #2, squash-merged d899865) | `corpus/d/` + `corpus/p/`, `tools/gate.sh` + `tools/golden-tsv.sh` + `tools/case-integrity.sh`, `expectations/`; engine-backed corpus + gate run lands at Gate P3 |
 | P2 host contracts and drift automation | vm | P0 | done (docs/evidence/p2-contract-drill-20261126/, docs/evidence/p2-drift-report-20261126.txt) | `test/pi-contract.test.ts`, `docs/support-matrix.md`, `tools/weekly-check.sh` + `tools/drift-report.py`, `syd.lock` (`hosts`) |
-| P3 clone-to-usable | vm | P1, P2.2 | todo | |
+| P3 clone-to-usable | vm | P1, P2.2 | blocked (Stage A done and green locally; gate execution needs an unsandboxed machine — the gate VM's harness shell makes every sandboxed exec exit ENOSYS 38, docs/evidence/p3-gate-20261126/) | `tools/setup/setup.sh` + `src/setup.ts` + `test/setup.test.ts`, `src/cli.ts` + `test/cli.test.ts`, README, `test/pi-contract.test.ts` (transform + prompt + command surfaces), `docs/evidence/p3-gate-20261126/` |
 | M2 kernel-band witness | machine | P0 | folded (into M6) | tasks listed in its order text |
 | M3 pi-web auto-deny confirm | machine | P0.1 | folded (into M5) | tasks listed in its order text |
 | M4 flip drills | machine | P3 | todo | |

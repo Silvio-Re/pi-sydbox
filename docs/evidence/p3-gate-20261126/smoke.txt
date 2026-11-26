@@ -1,0 +1,127 @@
+# 03-smoke.sh against the freshly built engine (2026-11-26, gate machine VM)
+<SYD-SMOKE>
+== input ==
+syd=@HOME@/.local/opt/syd-3.59.0/syd
+profile_base=/workspace/github__Silvio-Re__pi-sydbox/corpus/profiles/syd-a.profile
+root=@SCRATCH@/root
+
+== deny profile (@SCRATCH@/deny.syd-3) ==
+# PROVISIONAL — variant A: no unshare rules, no bind rules. Landlock + seccomp.
+#
+# Shape: inherit the engine's own allowlist, then deny the listed paths, because
+# syd is deny-by-default and a later rule overrides an earlier one — PROFILE_LINUX
+# in src/config.rs of syd 3.59.0 relies on exactly that (it denies
+# /lib*/modules/*** right after allowing /lib*/***).
+#
+# Categories are the engine's vocabulary, not glibc's: lpath = traverse,
+# npath = name lookup, rpath = read, wpath = write, cpath = create,
+# tpath = truncate. There is no read/stat/write/all spelling in 3.59.0; a profile
+# using one is refused at load time (rc=22 EINVAL) or over-restricts silently.
+# `include_profile linux` supplies the seccomp allowlist (/usr, /bin, /lib*,
+# /opt, /tmp/**, /dev).
+#
+# `sandbox/lock:off` is required and is not an optimisation: Landlock is on by
+# default (src/config.rs:1969, "default unless feature(trusted)"), PROFILE_LINUX
+# ships no `lock/` rules, so its Landlock layer is an empty allowlist that denies
+# every path — including exec, which surfaces as "syd: exec error: Permission
+# denied", rc=13 and an empty log (Landlock denials are not logged; seccomp ones
+# are). Landlock cannot express "deny this one path" either, so a blacklist is
+# seccomp-only by construction. The directive must follow the include, because a
+# later directive wins.
+include_profile linux
+sandbox/lock:off
+# The case scripts are exec'd from the scratch root, and PROFILE_LINUX allows
+# /tmp/** for read/write/create/truncate but not for exec. Without this line every
+# case dies as "syd: exec error: Permission denied", logged with cap=exec,
+# sys=execve and the tip "configure allow/exec+<script>".
+allow/lpath,npath,rpath,wpath,cpath,tpath,exec,readdir+@SCRATCH@/root/***
+deny/lpath,npath,rpath,wpath,cpath,tpath+@SCRATCH@/root/secret
+
+== allow probe profile (@SCRATCH@/allow.syd-3) ==
+include_profile linux
+sandbox/lock:off
+allow/lpath,npath,rpath,wpath,cpath,tpath,exec,readdir+@SCRATCH@/root/***
+deny/lpath,npath,rpath,wpath,cpath,tpath+@SCRATCH@/root/secret
+allow/lpath,npath,rpath,wpath+@SCRATCH@/root/ok/plain
+
+== version ==
+$ SYD_LOG_FD=3 @HOME@/.local/opt/syd-3.59.0/syd --version
+syd 3.59.0 (Take It Back)
+Rock solid application kernel
+Author: Ali Polatel <alip@chesswob.org>
+License: GPL-3.0-only
+Features: -debug, +force, -kcov, +log, -oci, -trusted
+rc=0
+-- log (fd 3) empty --
+
+== check ==
+$ SYD_LOG_FD=3 @HOME@/.local/opt/syd-3.59.0/syd --check
+syd 3.59.0 (Take It Back)
+Rock solid application kernel
+Author: Ali Polatel <alip@chesswob.org>
+License: GPL-3.0-only
+Features: -debug, +force, -kcov, +log, -oci, -trusted
+Allocator: GrapheneOS
+LibSeccomp: v2.6.0 api:7
+Kernel may be tainted (error: EXDEV: Cross-device link).
+ASLR is ? (error: EXDEV: Cross-device link).
+BPF JIT compiler is ? (error: EXDEV: Cross-device link).
+YAMA ptrace(2) scope is ? (error: EXDEV: Cross-device link).
+Landlock ABI 7 is fully enforced.
+User namespaces are supported.
+Cross memory attach is not supported ([91minsecure[0m).
+kcmp(2) is not supported.
+Memory sealing is supported.
+Secret memory is supported.
+Memory tagging is not supported.
+Core scheduling is not supported.
+UNIX socket diagnostics are not supported.
+LSMs: capability, landlock, selinux.
+SELinux is disabled.
+AppArmor is disabled.
+Open file limits: 1048576 soft, 1048576 hard, 0 nr_open, 0 file-max
+Host (build): 6.18.35 x86_64
+Host (target): 6.18.35 x86_64
+Host Linux: 6.18 with mmap_min_addr=4096, page_size=4096, +at_execve_check, +landlock_scoped_signals, +madv_guard_install, +namespaced_pid_max, +pidfd_thread, +pidfd_get_info, +procmap_query, +proc_pid_fd_stat_size, +seccomp_user_notif_fd_sync_wake_up, +statx_mnt_id_unique, -uring_restrictions_task, tcp_fastopen=? (error: EXDEV: Cross-device link), char_devices=26, mem=1, cpu/msr=202, cpu/cpuid=203
+Environment: gnu-linux-64
+Architectures: x86_64, x86, x32
+Architecture x86 supports ipc(2) multiplexer.
+Architecture x86 supports socketcall(2) multiplexer.
+CPU: 5, little-endian
+CPUFLAGS: fxsr,sse,sse2
+Store Bypass status: Speculation feature is enabled, mitigation is disabled.
+Indirect Branch status: Speculation feature is enabled, mitigation is disabled.
+L1D Flush status: Speculation feature is force-disabled, mitigation is enabled.
+rc=0
+-- log (fd 3) empty --
+
+== deny probe: read the denied file ==
+
+== deny-read-secret ==
+$ SYD_LOG_FD=3 @HOME@/.local/opt/syd-3.59.0/syd -P @SCRATCH@/deny.syd-3 -- cat @SCRATCH@/root/secret
+syd: exec error: Function not implemented
+rc=38
+-- log (fd 3) empty --
+expected: rc != 0, no "secret" line in the output, one deny record in the log
+
+== allow probe: read an explicitly allowed file ==
+
+== allow-read-plain ==
+$ SYD_LOG_FD=3 @HOME@/.local/opt/syd-3.59.0/syd -P @SCRATCH@/allow.syd-3 -- cat @SCRATCH@/root/ok/plain
+syd: exec error: Function not implemented
+rc=38
+-- log (fd 3) empty --
+expected: rc = 0 and the line "plain"
+
+== what to paste back ==
+the whole block above, unchanged
+</SYD-SMOKE>
+
+# Reproduction outside the smoke script, same machine (deny profile from corpus/profiles/syd-a.profile):
+$ ~/.local/opt/syd-3.59.0/syd -P @SCRATCH@/deny.syd-3 -- cat @SCRATCH@/root/secret
+syd: exec error: Function not implemented
+rc=38
+$ ~/.local/opt/syd-3.59.0/syd -p off -- /bin/true  # unconfined control: separates policy from machinery
+syd: exec error: Function not implemented
+rc=38
+# syd --check exits 0 on the same machine: the engine itself starts and self-reports healthy.
